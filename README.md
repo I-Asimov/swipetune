@@ -1,6 +1,6 @@
 # SwipeTune 🔥🎧
 
-**Tinder tarzı şarkı keşif uygulaması.** Kart açılınca şarkı çalar. Sağa kaydırırsan beğenirsin, sola kaydırırsan geçersin. Beğendiklerin Spotify'daki **SwipeTune ❤️** playlistine otomatik eklenir, Shazam'daki gibi.
+**Tinder tarzı şarkı keşif uygulaması.** Kart açılınca şarkı çalar. Sağa kaydırırsan beğenirsin, sola kaydırırsan geçersin. Beğendiklerin Spotify'daki **My SwipeTune Tracks** playlistine otomatik eklenir, Shazam'daki gibi.
 
 > *A Tinder-style music discovery web app with a hand-built recommendation engine (Thompson Sampling, hierarchical Bayesian priors, personalized PageRank over an artist graph). Pure client-side JavaScript: no backend, no build step.*
 
@@ -11,7 +11,7 @@
 ## Özellikler
 - 🎵 **Otomatik önizleme:** Her kartta 30 saniyelik önizleme çalar. Karta dokununca durur ya da devam eder.
 - 👀 **Girişsiz mod:** Spotify hesabı olmadan da denenebilir, beğeniler cihazda saklanır.
-- ❤️ **Shazam gibi playlist:** İlk beğenide `SwipeTune ❤️` playlisti oluşturulur, sonraki beğeniler oraya eklenir. Geri alırsan şarkı playlistten de çıkar.
+- ❤️ **Shazam gibi playlist:** İlk beğenide `My SwipeTune Tracks` playlisti oluşturulur (Shazam'ın "My Shazam Tracks"i gibi: en yeni şarkı en üstte, markalı kapak), sonraki beğeniler oraya eklenir. Geri alırsan şarkı playlistten de çıkar.
 - 🧠 **Kendi yazdığım öneri motoru:** "Algoritma beynin" paneli, sistemin seni nasıl modellediğini canlı gösterir.
 - 🖼️ Gerçek albüm kapakları, uyum yüzdesi ve her öneri için "neden bu şarkı" açıklaması.
 - 🔐 Spotify girişi **PKCE** ile yapılır. Backend ve client secret yok, şifre uygulamaya hiç gelmez.

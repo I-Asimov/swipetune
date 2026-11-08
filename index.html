@@ -508,10 +508,11 @@ function chooseNext(){
    ===================================================================== */
 const CLIENT_ID='2c1c98194e404adda51ae057eeb73ef5';
 const REDIRECT_URI=location.origin+location.pathname;
-const SCOPES='playlist-modify-private playlist-modify-public playlist-read-private user-library-modify user-library-read user-top-read';
+const SCOPES='playlist-modify-private playlist-modify-public playlist-read-private user-library-modify user-library-read user-top-read ugc-image-upload';
 const API='https://api.spotify.com/v1';
 const LIKED_URL='https://open.spotify.com/collection/tracks';
-const PL_NAME='SwipeTune ❤️';
+const PL_NAME='My SwipeTune Tracks';
+const OLD_PL_NAMES=['SwipeTune ❤️'];
 let live=true;                 // keşif motoru çalışıyor mu (Deezer)
 let spOn=false,me=ls.get('me',null),TOP=[];
 let pl=ls.get('playlist',null),plChecked=false;
@@ -639,20 +640,45 @@ function errText(e){
   if(e?.code==='auth')return 'Spotify girişi gerekli';
   return 'Spotify hatası: '+(e?.message||'bilinmiyor');
 }
+/* Shazam gibi markalı kapak: tarayıcıda çizilip JPEG olarak yüklenir */
+function coverJpegB64(){
+  const c=document.createElement('canvas');c.width=c.height=640;const x=c.getContext('2d');
+  const g=x.createLinearGradient(0,0,640,640);g.addColorStop(0,'#ff4d6d');g.addColorStop(.55,'#ff7a3d');g.addColorStop(1,'#2a0f3a');
+  x.fillStyle=g;x.fillRect(0,0,640,640);
+  x.globalAlpha=.18;x.fillStyle='#fff';
+  for(let i=0;i<3;i++){x.save();x.translate(320,300);x.rotate((-12+i*12)*Math.PI/180);x.fillRect(-150,-200,300,400);x.restore()}
+  x.globalAlpha=1;x.save();x.translate(320,285);x.rotate(8*Math.PI/180);
+  x.fillStyle='#fff';x.beginPath();x.roundRect?x.roundRect(-140,-185,280,370,28):x.rect(-140,-185,280,370);x.fill();
+  x.fillStyle='#ff4d6d';x.beginPath();x.moveTo(0,70);x.bezierCurveTo(-120,-10,-70,-110,0,-55);x.bezierCurveTo(70,-110,120,-10,0,70);x.fill();x.restore();
+  x.fillStyle='#fff';x.textAlign='center';x.font='800 64px Outfit, system-ui, sans-serif';x.fillText('SwipeTune',320,560);
+  x.font='600 26px Outfit, system-ui, sans-serif';x.globalAlpha=.85;x.fillText('sağa kaydırdıkların',320,600);
+  let q=.88,u=c.toDataURL('image/jpeg',q);while(u.length*.75>250000&&q>.4){q-=.1;u=c.toDataURL('image/jpeg',q)}
+  return u.split(',')[1];
+}
+async function uploadCover(id){
+  if(ls.get('coverDone:'+id,false))return;
+  try{await sp(`/playlists/${id}/images`,{method:'PUT',body:coverJpegB64(),headers:{'Content-Type':'image/jpeg'}});ls.set('coverDone:'+id,true);log('playlist kapağı yüklendi')}
+  catch(e){log('kapak yüklenemedi: '+e.message+(e.status===401||e.status===403?' (yeniden giriş gerekebilir)':''))}
+}
 async function ensurePlaylist(){
   if(pl&&plChecked)return pl;
   if(pl){try{await sp(`/playlists/${pl.id}?fields=id`);plChecked=true;return pl}catch(e){if(e.status===429)throw e;pl=null}}
   let url='/me/playlists?limit=50';
   for(let i=0;i<6&&url;i++){
     const j=await sp(url);
-    const f=(j?.items||[]).find(p=>p&&p.name===PL_NAME&&(!me||p.owner?.id===me.id));
-    if(f){pl={id:f.id,url:f.external_urls?.spotify||('https://open.spotify.com/playlist/'+f.id)};break}
+    const mine=(j?.items||[]).filter(p=>p&&(!me||p.owner?.id===me.id));
+    const f=mine.find(p=>p.name===PL_NAME)||mine.find(p=>OLD_PL_NAMES.includes(p.name));
+    if(f){
+      pl={id:f.id,url:f.external_urls?.spotify||('https://open.spotify.com/playlist/'+f.id)};
+      if(f.name!==PL_NAME){try{await sp(`/playlists/${f.id}`,{method:'PUT',body:JSON.stringify({name:PL_NAME,public:true})});log('eski playlist yeniden adlandırıldı')}catch(e){}}
+      break}
     url=j?.next;
   }
   if(!pl){
-    const p=await sp('/me/playlists',{method:'POST',body:JSON.stringify({name:PL_NAME,public:false,description:'SwipeTune\'da sağa kaydırdığın şarkılar otomatik buraya düşer.'})});
+    const p=await sp('/me/playlists',{method:'POST',body:JSON.stringify({name:PL_NAME,public:true,description:'SwipeTune\'da sağa kaydırdığın şarkılar 🔥 i-asimov.github.io/swipetune'})});
     pl={id:p.id,url:p.external_urls?.spotify||('https://open.spotify.com/playlist/'+p.id)};
   }
+  uploadCover(pl.id);
   plChecked=true;ls.set('playlist',pl);return pl;
 }
 /* Deezer şarkısını Spotify'da bul (önbellekli) */
@@ -674,7 +700,7 @@ async function doPush(item){
   try{
     const uri=await resolveUri(item);
     if(!uri){item.status='notfound';sync('err',`"${item.name}" Spotify'da bulunamadı`);saveAll();refreshList();return}
-    if(usePlaylist()){const p=await ensurePlaylist();await sp(`/playlists/${p.id}/items`,{method:'POST',body:JSON.stringify({uris:[uri]})});item.dest='playlist';sync('ok',`✓ "${item.name}" ${PL_NAME} playlistine eklendi`)}
+    if(usePlaylist()){const p=await ensurePlaylist();await sp(`/playlists/${p.id}/items`,{method:'POST',body:JSON.stringify({uris:[uri],position:0})});item.dest='playlist';sync('ok',`✓ "${item.name}" ${PL_NAME} playlistine eklendi`)}
     else{await sp('/me/library?uris='+encodeURIComponent(uri),{method:'PUT'});item.dest='library';sync('ok',`✓ "${item.name}" Beğenilen Şarkılar'a eklendi`)}
     item.status='ok';
   }catch(e){
