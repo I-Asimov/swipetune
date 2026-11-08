@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>SwipeTune — Şarkı Keşfet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0e0b14;--panel:#1a1524;--line:#2c2440;--text:#f4f0fa;--muted:#9a90ab;--like:#2ee59d;--nope:#ff4d6d;--super:#4db8ff;--accent:#ff7a3d;--spotify:#1ed760}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;align-items:center;overflow:hidden;
+    background-image:radial-gradient(circle at 20% 0%,#3a1d4a55,transparent 50%),radial-gradient(circle at 100% 100%,#1d4a2a33,transparent 50%)}
+  button{font-family:'Outfit',system-ui,sans-serif}
+  header{width:100%;max-width:440px;display:flex;justify-content:space-between;align-items:center;padding:14px 18px 4px;gap:8px}
+  .logo{font-weight:800;font-size:23px;letter-spacing:-.5px}
+  .logo span{background:linear-gradient(90deg,var(--nope),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .icon-btn{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:999px;padding:7px 12px;font-weight:600;font-size:13px;cursor:pointer;display:flex;gap:6px;align-items:center;white-space:nowrap}
+  .badge{background:var(--like);color:#06281a;border-radius:999px;padding:0 7px;font-size:12px;font-weight:800}
+  .sync{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;max-width:440px;width:100%;padding:2px 18px 6px;min-height:20px}
+  .sync span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+  .dot.ok{background:var(--spotify)}.dot.busy{background:#ffc84d;animation:pulse 1s infinite}.dot.err{background:var(--nope)}
+  @keyframes pulse{50%{opacity:.3}}
+  .filters{width:100%;max-width:440px;display:flex;gap:8px;overflow-x:auto;padding:2px 18px 8px;scrollbar-width:none}
+  .filters::-webkit-scrollbar{display:none}
+  .chip{flex:none;background:var(--panel);border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:6px 12px;font-weight:600;font-size:13px;cursor:pointer;transition:.2s}
+  .chip.on{background:var(--text);color:var(--bg);border-color:var(--text)}
+
+  .deck{position:relative;width:calc(100% - 36px);max-width:400px;flex:1;max-height:560px;min-height:340px}
+  .card{position:absolute;inset:0;border-radius:24px;overflow:hidden;cursor:grab;user-select:none;touch-action:none;box-shadow:0 20px 50px #0009;will-change:transform;background:#222}
+  .card:active{cursor:grabbing}
+  .card.behind{transform:scale(.94) translateY(14px);filter:brightness(.55);transition:transform .3s,filter .3s}
+  .art{position:absolute;inset:0}.art svg{width:100%;height:100%;display:block}
+  .shade{position:absolute;inset:0;background:linear-gradient(to top,#000f 0%,#000a 32%,transparent 60%)}
+  .info{position:absolute;left:0;right:0;bottom:0;padding:20px}
+  .info h2{font-size:29px;line-height:1.05;font-weight:800;letter-spacing:-.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .info .artist{font-size:17px;color:#ddd;margin-top:4px}
+  .meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .tag{background:#ffffff22;backdrop-filter:blur(6px);border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .reason{margin-top:8px;font-size:13px;color:var(--accent);font-weight:600}
+  .links{display:flex;gap:8px;margin-top:12px}
+  .links a{font-size:13px;font-weight:700;color:#032b12;background:var(--spotify);text-decoration:none;border-radius:999px;padding:7px 14px}
+  .links a.alt{background:transparent;color:var(--text);border:1px solid #ffffff44;font-weight:600}
+  .stamp{position:absolute;top:30px;font-weight:800;font-size:34px;border:5px solid;border-radius:10px;padding:2px 12px;opacity:0;letter-spacing:2px;background:#0005}
+  .stamp.like{left:22px;color:var(--like);transform:rotate(-16deg)}
+  .stamp.nope{right:22px;color:var(--nope);transform:rotate(16deg)}
+  .stamp.super{left:50%;top:38%;color:var(--super);transform:translateX(-50%) rotate(-6deg);font-size:28px}
+  .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;color:var(--muted);padding:30px;border:2px dashed var(--line);border-radius:24px}
+  .center b{color:var(--text);font-size:19px}
+  .spinner{width:36px;height:36px;border:4px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .controls{display:flex;gap:18px;align-items:center;justify-content:center;padding:16px 0 22px}
+  .ctl{border:none;border-radius:50%;background:var(--panel);display:grid;place-items:center;cursor:pointer;box-shadow:0 6px 20px #0006;transition:transform .15s}
+  .ctl:active{transform:scale(.9)}
+  .ctl.sm{width:46px;height:46px;font-size:19px}.ctl.lg{width:64px;height:64px;font-size:29px}
+  .ctl.nope{color:var(--nope);border:2px solid #ff4d6d55}.ctl.like{color:var(--like);border:2px solid #2ee59d55}
+  .ctl.super{color:var(--super);border:2px solid #4db8ff55}.ctl.undo{color:#ffc84d;border:2px solid #ffc84d44}
+
+  .overlay{position:fixed;inset:0;z-index:30;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px;gap:16px;text-align:center;overflow-y:auto}
+  .overlay.hide{display:none}
+  .overlay h1{font-size:34px;font-weight:800;line-height:1.1}
+  .overlay p{color:var(--muted);max-width:360px}
+  .overlay .grid{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;max-width:400px}
+  .overlay .chip{font-size:14px;padding:8px 14px}
+  .btn{background:var(--text);color:var(--bg);border:none;border-radius:12px;padding:12px 20px;font-weight:700;font-size:15px;cursor:pointer;text-decoration:none;display:inline-block;text-align:center}
+  .btn.spotify{background:var(--spotify);color:#032b12}
+  .btn.ghost{background:transparent;color:var(--text);border:1px solid #3a3050}
+  .mode{font-size:13px;padding:6px 12px;border-radius:999px;background:var(--panel);border:1px solid var(--line)}
+
+  .drawer-bg{position:fixed;inset:0;background:#000a;opacity:0;pointer-events:none;transition:.25s;z-index:10}
+  .drawer-bg.open{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;left:0;right:0;bottom:0;max-width:440px;margin:0 auto;max-height:82vh;background:var(--panel);border-radius:24px 24px 0 0;transform:translateY(100%);transition:.3s;z-index:11;display:flex;flex-direction:column}
+  .drawer.open{transform:none}
+  .drawer-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px 10px;gap:8px}
+  .list{overflow-y:auto;padding:0 14px 8px}
+  .row{display:flex;gap:12px;align-items:center;padding:8px 6px;border-bottom:1px solid var(--line)}
+  .thumb{width:46px;height:46px;border-radius:8px;overflow:hidden;flex:none}.thumb svg{width:100%;height:100%}
+  .row .t{flex:1;min-width:0}
+  .row .t b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .t small{color:var(--muted)}
+  .row a{color:var(--spotify);text-decoration:none;font-size:18px;padding:4px}
+  .drawer-foot{display:flex;flex-direction:column;gap:10px;padding:12px 18px 20px}
+
+  .match{position:fixed;inset:0;z-index:20;background:radial-gradient(circle,#4db8ff44,#000e 70%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;opacity:0;pointer-events:none;transition:.3s;text-align:center;padding:30px}
+  .match.open{opacity:1;pointer-events:auto}
+  .match h1{font-size:46px;font-weight:800;font-style:italic;background:linear-gradient(90deg,var(--super),var(--like));-webkit-background-clip:text;background-clip:text;color:transparent;transform:rotate(-4deg)}
+  .match .disc{width:150px;height:150px;border-radius:50%;overflow:hidden;box-shadow:0 0 60px #4db8ff88;animation:spin 6s linear infinite}
+  .match .disc svg{width:100%;height:100%}
+  .toast{position:fixed;bottom:120px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:600;font-size:14px;opacity:0;transition:.25s;z-index:40;pointer-events:none;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
+  .toast.show{opacity:1;transform:translateX(-50%)}
+  .match-tag{background:linear-gradient(90deg,#2ee59d66 var(--m),#ffffff22 var(--m))}
+  .brain{padding:4px 6px 10px}
+  .brain h4{margin:16px 0 8px;font-size:14px;color:var(--accent)}
+  .brain .muted,.muted{color:var(--muted);font-size:13px;line-height:1.45}
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .kpis div{background:#ffffff0d;border-radius:12px;padding:10px;text-align:center}
+  .kpis b{display:block;font-size:20px}.kpis small{color:var(--muted);font-size:11px}
+  .bar{margin:7px 0}.bar-top{display:flex;justify-content:space-between;font-size:13px;gap:8px}
+  .bar-top small{color:var(--muted);font-size:11px}
+  .bar-track{height:7px;background:#ffffff12;border-radius:99px;overflow:hidden;margin-top:4px}
+  .bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--like));border-radius:99px}
+  details{margin-top:14px}summary{cursor:pointer;color:var(--text);font-size:13px;font-weight:600}
+
+  .art{background-size:cover}
+  .prog{position:absolute;top:0;left:0;right:0;height:4px;background:#ffffff22;z-index:2}.prog i{display:block;height:100%;width:0;background:var(--spotify);transition:width .25s linear}
+  .playbtn{position:absolute;top:14px;right:14px;width:46px;height:46px;border-radius:50%;border:none;background:#000a;color:#fff;font-size:18px;cursor:pointer;backdrop-filter:blur(6px);z-index:3}
+  .playbtn.dim{opacity:.55}
+  .hint{font-size:12px;color:#ccc;min-height:14px;margin-top:4px}
+  .thumbimg{width:46px;height:46px;border-radius:8px;object-fit:cover;flex:none}
+  .links a{font-size:12px;padding:6px 12px}
+</style>
+</head>
+<body>
+
+<div class="overlay hide" id="login">
+  <h1>🔥 Swipe<span style="color:var(--accent)">Tune</span></h1>
+  <p>Kaydırarak şarkı keşfet. Kart açılınca şarkı çalar; sağa kaydırdıkların otomatik olarak Spotify'daki <b>SwipeTune ❤️</b> playlistine düşer — Shazam gibi.</p>
+  <button class="btn spotify" id="loginBtn" style="border-radius:999px;padding:14px 30px">Spotify ile giriş yap</button>
+  <p style="font-size:12px">Şifren bize gelmez; giriş Spotify'ın kendi sayfasında olur.</p>
+</div>
+<div class="overlay hide" id="onb">
+  <h1>🔥 Swipe<span style="color:var(--accent)">Tune</span></h1>
+  <p id="onbText">Birkaç tür seç. Kaydırdıkça zevkini öğrenirim; Spotify'da en çok dinlediklerini de hesaba katıyorum.</p>
+  <div class="grid" id="onbGrid"></div>
+  <button class="btn" id="startBtn" style="padding:14px 40px">Başla</button>
+  <p style="font-size:13px">→ beğen · ← geç · ↑ süper beğeni · karta dokun: çal/durdur</p>
+  
+</div>
+
+<header>
+  <div class="logo">Swipe<span>Tune</span></div>
+  <div style="display:flex;gap:6px">
+    <button class="icon-btn" id="soundBtn" title="Ses">🔊</button>
+    <button class="icon-btn" id="brainBtn" title="Algoritma">🧠</button>
+    <button class="icon-btn" id="openList">❤️ <span class="badge" id="count">0</span></button>
+    <button class="icon-btn" id="menuBtn">⚙️</button>
+  </div>
+</header>
+<div class="sync"><span class="dot" id="syncDot"></span><span id="syncText">Hazırlanıyor…</span></div>
+<div class="filters" id="filters"></div>
+<div class="deck" id="deck"></div>
+<div class="controls">
+  <button class="ctl sm undo" id="undoBtn" title="Geri al">↺</button>
+  <button class="ctl lg nope" id="nopeBtn" title="Geç">✕</button>
+  <button class="ctl sm super" id="superBtn" title="Süper beğeni">★</button>
+  <button class="ctl lg like" id="likeBtn" title="Beğen">♥</button>
+</div>
+
+<div class="drawer-bg" id="drawerBg"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-head"><h3 id="drawerTitle">Beğendiklerin</h3><button class="icon-btn" id="closeList">Kapat</button></div>
+  <div class="list" id="list"></div>
+  <div class="drawer-foot" id="drawerFoot"></div>
+</div>
+
+<div class="match" id="match">
+  <h1>Eşleşme!</h1>
+  <div class="disc" id="matchDisc"></div>
+  <div><b id="matchTitle" style="font-size:22px"></b><br><span id="matchArtist" style="color:var(--muted)"></span></div>
+  <p style="color:var(--muted);max-width:290px" id="matchText"></p>
+  <button class="btn" id="matchClose" style="padding:12px 34px">Devam et</button>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   SwipeTune — "Hint Kumaşı" öneri motoru v2
+   ---------------------------------------------------------------------
+   1) Bayesçi kollar (Beta dağılımı) + Thompson Sampling
+      - tür, sanatçı, saat-dilimi×tür ve "öneri kaynağı" için ayrı kollar
+   2) Zamanla unutma (üstel bozunma, her kaydırmada γ=0.992)
+   3) Örtük sinyaller: karar süresi, Spotify'da açma, süper beğeni
+   4) Sanatçı grafiği: arama sonuçlarında birlikte çıkanlar + birlikte
+      beğenilenler → Kişiselleştirilmiş PageRank (random walk w/ restart)
+   5) Kaynak meta-bandit: "sende hangi öneri yöntemi işe yarıyor?"
+      (favori sanatçı / grafik komşusu / tür / Spotify geçmişi / keşif)
+   6) Sıralama: tahmin + çeşitlilik cezası + yenilik bonusu
+   ===================================================================== */
+const GENRES=['Türkçe Rock','Türkçe Pop','Türkçe Rap','Anadolu Rock','Arabesk','Pop','Rock','Rap','R&B','Indie','Elektronik','Metal','Jazz','Lo-fi','Phonk','K-Pop','Latin','Alternatif'];
+const SEEDS={
+ 'Türkçe Rock':['Duman','mor ve ötesi','Teoman','maNga','Athena','Adamlar','Dolu Kadehi Ters Tut','Yüzyüzeyken Konuşuruz','Pinhani','Gripin','Şebnem Ferah','Model','Madrigal','Redd','Kurban'],
+ 'Türkçe Pop':['Tarkan','Sezen Aksu','Sertab Erener','Mabel Matiz','Mert Demir','Edis','Zeynep Bastık','Hadise','Gökhan Türkmen','Kenan Doğulu','Simge','Melike Şahin','Murat Boz','Ajda Pekkan'],
+ 'Türkçe Rap':['Ceza','Sagopa Kajmer','Ezhel','Ben Fero','Şanışer','Norm Ender','Motive','Uzi','Lvbel C5','Cakal','Hidra','Allame','Contra','Murda'],
+ 'Anadolu Rock':['Barış Manço','Cem Karaca','Erkin Koray','Fikret Kızılok','Moğollar','Selda Bağcan','Edip Akbayram','3 Hürel','Altın Gün'],
+ 'Arabesk':['Müslüm Gürses','Orhan Gencebay','Ferdi Tayfur','Bergen','Ümit Besen','Hakan Altun','Azer Bülbül'],
+ 'Pop':['The Weeknd','Dua Lipa','Taylor Swift','Harry Styles','Billie Eilish','Sabrina Carpenter','Ariana Grande','Olivia Rodrigo','Bruno Mars','Lady Gaga','Chappell Roan'],
+ 'Rock':['Arctic Monkeys','The Killers','Nirvana','Queen','Linkin Park','Foo Fighters','Red Hot Chili Peppers','Radiohead','The Strokes','Muse','Oasis'],
+ 'Rap':['Eminem','Kendrick Lamar','Travis Scott','Drake','J. Cole','Kanye West','Tyler, The Creator','Playboi Carti','21 Savage','Future'],
+ 'R&B':['Frank Ocean','SZA','Daniel Caesar','Childish Gambino','Brent Faiyaz','H.E.R.','Steve Lacy','The Weeknd'],
+ 'Indie':['Tame Impala','The 1975','Beach House','Mac DeMarco','Glass Animals','Cigarettes After Sex','The Neighbourhood','Phoebe Bridgers','Wallows'],
+ 'Elektronik':['Daft Punk','M83','deadmau5','RÜFÜS DU SOL','Fred again..','Disclosure','Justice','Avicii','Calvin Harris','Kygo'],
+ 'Metal':['Metallica','System Of A Down','Slipknot','Iron Maiden','Avenged Sevenfold','Bring Me The Horizon','Gojira','Pantera'],
+ 'Jazz':['Dave Brubeck','Miles Davis','John Coltrane','Chet Baker','Frank Sinatra','Ella Fitzgerald','Nina Simone','Louis Armstrong'],
+ 'Lo-fi':['Nujabes','Jinsang','idealism','Tomppabeats','Kupla','potsu'],
+ 'Phonk':['Kordhell','DVRST','INTERWORLD','Ghostface Playa','PlayaPhonk','Hensonn'],
+ 'K-Pop':['BTS','BLACKPINK','Stray Kids','NewJeans','TWICE','SEVENTEEN','aespa','LE SSERAFIM'],
+ 'Latin':['Bad Bunny','KAROL G','J Balvin','ROSALÍA','Peso Pluma','Feid','Shakira','Rauw Alejandro'],
+ 'Alternatif':['Radiohead','Deftones','Twenty One Pilots','Cage The Elephant','The Smiths','Portishead','Joy Division']
+};
+
+/* ---------- yardımcılar ---------- */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const ls={get(k,d){try{const v=localStorage.getItem('stl_'+k);return v===null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem('stl_'+k,JSON.stringify(v))}catch(e){}}};
+function toast(t){const el=$('toast');el.textContent=t;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),1900)}
+function sync(state,text){$('syncDot').className='dot '+state;$('syncText').textContent=text}
+const spSearch=s=>'https://open.spotify.com/search/'+encodeURIComponent(s.name+' '+s.artists[0]);
+const ytSearch=s=>'https://www.youtube.com/results?search_query='+encodeURIComponent(s.name+' '+s.artists[0]);
+const pct=x=>Math.round(x*100);
+
+/* ---------- kapak sanatı ---------- */
+function hash(str){let h=2166136261;for(const c of str){h^=c.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0}
+function rng(seed){return()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}}
+let artN=0;
+function art(s){
+  const r=rng(hash(s.name+s.artists[0])),id='a'+(artN++);
+  const h1=Math.floor(r()*360),h2=(h1+60+Math.floor(r()*120))%360,h3=(h1+180)%360,style=Math.floor(r()*3);
+  let sh='';
+  if(style===0){for(let i=0;i<6;i++)sh+=`<circle cx="${r()*400}" cy="${r()*500}" r="${40+r()*140}" fill="hsl(${[h1,h2,h3][i%3]} 85% ${50+r()*15}%)" opacity="${.35+r()*.4}"/>`}
+  else if(style===1){for(let i=0;i<7;i++){const y=60+i*65;sh+=`<path d="M0 ${y} Q100 ${y-60*r()} 200 ${y} T400 ${y} V500 H0Z" fill="hsl(${(h1+i*18)%360} 80% ${30+i*6}%)" opacity=".75"/>`}}
+  else{sh+=`<circle cx="200" cy="220" r="160" fill="#0a0a0a"/>`;for(let i=0;i<9;i++)sh+=`<circle cx="200" cy="220" r="${150-i*12}" fill="none" stroke="#fff" stroke-opacity=".06"/>`;sh+=`<circle cx="200" cy="220" r="52" fill="hsl(${h2} 85% 58%)"/><circle cx="200" cy="220" r="6" fill="#0a0a0a"/>`}
+  return `<svg viewBox="0 0 400 500" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${h1} 70% 22%)"/><stop offset="1" stop-color="hsl(${h2} 70% 12%)"/></linearGradient></defs><rect width="400" height="500" fill="url(#${id})"/>${sh}</svg>`;
+}
+
+/* ---------- tercih durumu ---------- */
+let S=ls.get('state',null)||{onboarded:false,filter:'Hepsi'};
+let seen=new Set(ls.get('seen',[]));
+let likes=ls.get('likes',[]);
+const saveAll=()=>{ls.set('state',S);ls.set('seen',[...seen].slice(-4000));ls.set('likes',likes.slice(0,500));ls.set('model2',M)};
+
+/* =====================================================================
+   1) BAYESÇİ KOLLAR
+   ===================================================================== */
+const PRIOR={g:[1,1],a:[1,1.3],s:[2,2],c:[1,1]};  // sanatçıda hafif temkinli önsel
+const GAMMA=0.992;                                 // ~85 kaydırmada yarı ömür
+const SOURCES=['fav','graph','genre','personal','explore'];
+const SRC_LABEL={fav:'Favori sanatçıların',graph:'Sanatçı ağı (komşular)',genre:'Tür tahmini',personal:'En çok dinlediklerin (Spotify)',explore:'Rastgele keşif'};
+
+function newModel(){return {v:2,step:0,arms:{g:{},a:{},s:{},c:{}},graph:{},aGenre:{},found:{},recent:[],likedSeq:[],shownA:{},
+  stats:{n:0,like:0,sup:0,nope:0,dwellSum:0,src:{}}}}
+let M=ls.get('model2',null);
+if(!M||M.v!==2){
+  M=newModel();
+  // eski sürümden göç
+  const old=ls.get('state',{})||{};
+  for(const[g,w]of Object.entries(old.genres||{}))if(w>0)upd('g',g,1,Math.min(w,6)/2);
+  for(const[a,w]of Object.entries(old.artists||{}))upd('a',a,w>0?1:0,Math.min(Math.abs(w),4)/2);
+  for(const[g,arr]of Object.entries(old.found||{}))M.found[g]=arr.slice(-60);
+}
+/* Hiyerarşik Bayes: sanatçının önseli, türüne olan zevkinden türetilir
+   (az verisi olan sanatçı türün ortalamasına "çekilir" — shrinkage). */
+function priorOf(kind,key){
+  if(kind==='a'){const g=M.aGenre[key];if(g){const mg=mean(dec('g',g)),k=2.6;return[.2+k*mg,.2+k*(1-mg)]}}
+  return PRIOR[kind];
+}
+function dec(kind,key){
+  const x=M.arms[kind][key],[pa,pb]=priorOf(kind,key);
+  if(!x)return{a:pa,b:pb,n:0};
+  const f=Math.pow(GAMMA,M.step-x.t);
+  return{a:pa+x.a*f,b:pb+x.b*f,n:(x.a+x.b)*f};
+}
+function upd(kind,key,r,w){
+  if(!key)return;
+  const t=M.arms[kind];const x=t[key]||(t[key]={a:0,b:0,t:M.step});
+  const f=Math.pow(GAMMA,M.step-x.t);
+  x.a=x.a*f+w*r;x.b=x.b*f+w*(1-r);x.t=M.step;
+}
+const mean=d=>d.a/(d.a+d.b);
+/* Beta örnekleme (Marsaglia–Tsang gamma) */
+function randn(){let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+function gammaS(k){
+  if(k<1)return gammaS(k+1)*Math.pow(Math.random(),1/k);
+  const d=k-1/3,c=1/Math.sqrt(9*d);
+  for(;;){let x,v;do{x=randn();v=1+c*x}while(v<=0);v=v*v*v;const u=Math.random();
+    if(u<1-.0331*x*x*x*x)return d*v;if(Math.log(u)<.5*x*x+d*(1-v+Math.log(v)))return d*v}
+}
+const betaS=d=>{const x=gammaS(d.a),y=gammaS(d.b);return x/(x+y)};
+
+/* saat dilimi bağlamı */
+const BUCKETS=['gece','sabah','öğlen','akşam'];
+const bucket=()=>BUCKETS[Math.floor(((new Date().getHours()+2)%24)/6)];
+
+/* =====================================================================
+   2) SANATÇI GRAFİĞİ + KİŞİSELLEŞTİRİLMİŞ PAGERANK
+   ===================================================================== */
+function addEdge(x,y,w){
+  if(!x||!y||x===y)return;const g=M.graph;
+  (g[x]||(g[x]={}))[y]=(g[x][y]||0)+w;(g[y]||(g[y]={}))[x]=(g[y][x]||0)+w;
+}
+function pruneGraph(){
+  const ks=Object.keys(M.graph);if(ks.length<=450)return;
+  const keep=new Set(ks.map(k=>[k,Object.keys(M.graph[k]).length+(M.arms.a[k]?20:0)]).sort((a,b)=>b[1]-a[1]).slice(0,350).map(x=>x[0]));
+  for(const k of ks){if(!keep.has(k)){delete M.graph[k];continue}for(const n in M.graph[k])if(!keep.has(n))delete M.graph[k][n]}
+}
+let PPR={},pprStep=-1;
+function computePPR(){
+  if(pprStep===M.step)return PPR;
+  /* Çoklu ilgi: başlangıç kütlesi önce türler arasında (tür zevkine göre),
+     sonra her türün içindeki sevilen sanatçılar arasında paylaştırılır.
+     Böylece çok beğeni toplayan tek bir tür ağı domine edemez. */
+  const groups={};
+  for(const k in M.arms.a){const d=dec('a',k),m=mean(d)-.5;if(m>0&&d.n>.4){const g=M.aGenre[k]||'?';(groups[g]||(groups[g]={}))[k]=m*Math.min(1,d.n/2)}}
+  PPR={};pprStep=M.step;
+  const seeds={};let gt=0;const gw={};
+  for(const g in groups){gw[g]=Math.max(.05,g==='?'?.2:mean(dec('g',g))-.35);gt+=gw[g]}
+  if(!gt)return PPR;
+  for(const g in groups){const s=Object.values(groups[g]).reduce((a,b)=>a+b,0);for(const k in groups[g])seeds[k]=(gw[g]/gt)*groups[g][k]/s}
+  const alpha=.25;let p={...seeds};
+  for(let it=0;it<14;it++){
+    const nx={};for(const k in seeds)nx[k]=alpha*seeds[k];
+    for(const u in p){const nb=M.graph[u];if(!nb){nx[u]=(nx[u]||0)+(1-alpha)*p[u];continue}
+      let s=0;for(const v in nb)s+=nb[v];for(const v in nb)nx[v]=(nx[v]||0)+(1-alpha)*p[u]*nb[v]/s}
+    p=nx;
+  }
+  PPR=p;return PPR;
+}
+/* bir sanatçıyı hangi sevilen sanatçı üzerinden bulduk? (açıklama için) */
+function viaOf(a){
+  const nb=M.graph[a];if(!nb)return null;let best=null,bs=0;
+  for(const v in nb){const d=dec('a',v);const sc=nb[v]*(mean(d)-.5)*Math.min(1,d.n);if(sc>bs){bs=sc;best=v}}
+  return best;
+}
+
+/* =====================================================================
+   3) ADAY ÜRETİMİ — kaynak meta-bandit
+   ===================================================================== */
+const artistsFor=g=>[...new Set([...(SEEDS[g]||[]),...(M.found[g]||[])])];
+const filt=()=>S.filter!=='Hepsi'?S.filter:null;
+function likedArtists(){
+  return Object.keys(M.arms.a).map(k=>[k,dec('a',k)]).filter(([k,d])=>mean(d)>.55&&d.n>.8&&(!filt()||M.aGenre[k]===filt()));
+}
+function graphCands(){
+  const p=computePPR();
+  return Object.entries(p).filter(([k])=>dec('a',k).n<1.2&&(!filt()||!M.aGenre[k]||M.aGenre[k]===filt())).sort((a,b)=>b[1]-a[1]).slice(0,20);
+}
+function availableSources(){
+  const s=['genre','explore'];
+  if(likedArtists().length)s.push('fav');
+  if(graphCands().length>=2)s.push('graph');
+  if(TOP.length&&!filt())s.push('personal');
+  return s;
+}
+/* son kararların beğeni oranı: düşükse keşfi artır (adaptif keşif) */
+function recentLikeRate(){const r=M.recentR||[];if(r.length<4)return .5;return r.slice(-10).reduce((a,b)=>a+b,0)/Math.min(10,r.length)}
+function chooseSource(){
+  let av=availableSources();
+  // tek kaynağa kilitlenmeyi önle: son 10 önerinin 7'si favoriyse bu tur favori yok
+  const rs=(M.recentSrc||[]).slice(-10);
+  if(rs.filter(x=>x==='fav').length>=7)av=av.filter(x=>x!=='fav');
+  if(M.stats.n<5)av=av.filter(x=>x!=='explore');           // ilk kartlar: önce bildiğinden başla
+  else if(Math.random()<(M.stats.like<8?.1:.05))return 'explore'; // her zaman küçük bir keşif tabanı
+  const lr=recentLikeRate();
+  let best=av[0],bv=-1;
+  for(const s of av){let v=betaS(dec('s',s));
+    // keşif: model henüz zevkini bilmiyorsa ve işler kötüyse artır; zevkin oturduysa kıs
+    if(s==='explore')v*=(M.stats.like<8&&lr<.3)?1.5:.5;
+    if(s==='fav'&&M.stats.like>=8&&lr<.3)v*=1.25;           // oturmuş zevkte düşüşte bildiğine dön
+    if(s==='personal')v*=.8;
+    if(v>bv){bv=v;best=s}}
+  return best;
+}
+function tsGenre(){
+  if(filt())return filt();
+  let best=GENRES[0],bv=-1;
+  for(const g of GENRES){const v=betaS(dec('g',g));if(v>bv){bv=v;best=g}}
+  return best;
+}
+function leastShown(list){
+  const sorted=[...list].sort((a,b)=>(M.shownA[a]||0)-(M.shownA[b]||0));
+  return pick(sorted.slice(0,Math.max(3,Math.ceil(sorted.length/3))));
+}
+const artistPrompt=a=>pick([`${a} sanatçısının en popüler şarkıları`,`${a} sanatçısının şarkıları`,`${a} sanatçısının yeni şarkıları`]);
+function planQuery(){
+  const src=chooseSource();
+  if(src==='fav'){
+    const L=likedArtists();let best=L[0][0],bv=-1;
+    for(const[k,d]of L){const v=betaS(d)/(1+.15*(M.shownA[k]||0));if(v>bv){bv=v;best=k}}
+    return{src,artist:best,genre:M.aGenre[best]||null,prompt:artistPrompt(best)};
+  }
+  if(src==='graph'){
+    const C=graphCands();let r=Math.random()*C.reduce((s,[,v])=>s+v,0);let a=C[0][0];
+    for(const[k,v]of C){if((r-=v)<=0){a=k;break}}
+    return{src,artist:a,genre:M.aGenre[a]||null,prompt:artistPrompt(a)};
+  }
+  if(src==='personal'){const a=leastShown(TOP);return{src,artist:a,genre:M.aGenre[a]||null,prompt:''}}
+  if(src==='explore'){
+    const g=filt()||[...GENRES].sort((x,y)=>dec('g',x).n-dec('g',y).n).slice(0,6)[Math.floor(Math.random()*6)];
+    const a=leastShown(artistsFor(g));
+    return{src,artist:a,genre:g,prompt:artistPrompt(a)};
+  }
+  const g=tsGenre();const a=leastShown(artistsFor(g));
+  return{src:'genre',artist:a,genre:g,prompt:artistPrompt(a)};
+}
+
+/* =====================================================================
+   4) SIRALAMA — tahmin + çeşitlilik + yenilik
+   ===================================================================== */
+function estimate(t,sample){
+  const A=t.artists[0],g=t.genre||M.aGenre[A]||null;
+  const f=sample?betaS:mean;
+  const da=dec('a',A),dg=g?dec('g',g):{a:1,b:1,n:0},dc=g?dec('c',bucket()+'|'+g):{a:1,b:1,n:0};
+  const pa=f(da),pg=f(dg),pc=f(dc);
+  const graph=clamp(.5+(computePPR()[A]||0)*6,0,.95);
+  const wa=Math.min(1,da.n/3);                       // sanatçıya ne kadar güveniyoruz
+  let p=wa*pa+(1-wa)*(.7*pg+.3*graph);
+  p=.85*p+.15*pc;                                    // saat dilimi
+  // özellik (feat.) sanatçıları
+  for(const x of t.artists.slice(1,3)){const dx=dec('a',x);if(dx.n>.8)p+=.08*(mean(dx)-.5)}
+  return{p:clamp(p,0,1),parts:{pa,pg,pc,graph,wa,g,A}};
+}
+function rankScore(t){
+  let{p}=estimate(t,true);
+  const A=t.artists[0],rec=M.recent,i=rec.lastIndexOf(A);
+  if(i>=0){const ago=rec.length-i;p-=ago<=2?.35:ago<=5?.18:ago<=10?.06:0}
+  if(dec('a',A).n<.3)p+=.04;                         // yenilik bonusu
+  const g=t.genre||M.aGenre[A];
+  if(g){const c=(M.recentG||[]).slice(-6).filter(x=>x===g).length;if(c>2)p-=.045*(c-2)}   // aynı tür 3+ kez üst üste geldiyse   // tür çeşitliliği
+  if(filt()&&t.genre&&t.genre!==filt())p-=.5;
+  return p;
+}
+
+/* =====================================================================
+   5) ÖĞRENME — açık + örtük sinyaller
+   ===================================================================== */
+function reward(type,dwell,clicked){
+  if(type==='super')return[1,2.2];
+  if(type==='like')return[1,dwell<.7?.8:1];
+  if(clicked)return[.45,.8];          // açıp dinledi ama geçti: kısmen ilgilendi
+  if(dwell<1.2)return[0,1.3];         // anında attı: güçlü "hayır"
+  if(dwell>6)return[.3,.7];           // uzun düşündü: kararsız
+  return[0,1];
+}
+function learn(s,type,dwell,clicked){
+  M.step++;
+  const[r,w]=reward(type,dwell,clicked);
+  const A=s.artists[0],g=s.genre||M.aGenre[A];
+  upd('a',A,r,w);
+  for(const x of s.artists.slice(1,3))upd('a',x,r,w*.4);
+  if(g){upd('g',g,r,w*.8);upd('c',bucket()+'|'+g,r,w*.6);if(!M.aGenre[A])M.aGenre[A]=g}
+  upd('s',s.src||'genre',r,w);
+  // birlikte beğenilenler grafiğe kenar olarak eklenir (öğe-öğe işbirlikçi sinyal)
+  if(r>=.9){for(const b of M.likedSeq.slice(-5))if(b!==A)addEdge(A,b,.6);M.likedSeq.push(A);M.likedSeq=M.likedSeq.slice(-30)}
+  M.recent.push(A);M.recent=M.recent.slice(-30);
+  (M.recentR=M.recentR||[]).push(r);M.recentR=M.recentR.slice(-20);
+  (M.recentG=M.recentG||[]).push(g||'?');M.recentG=M.recentG.slice(-20);
+  (M.recentSrc=M.recentSrc||[]).push(s.src||'genre');M.recentSrc=M.recentSrc.slice(-20);
+  M.shownA[A]=(M.shownA[A]||0)+1;
+  const st=M.stats;st.n++;st.dwellSum+=Math.min(dwell,20);
+  if(type==='super')st.sup++;if(type!=='nope')st.like++;else st.nope++;
+  const ss=st.src[s.src||'genre']||(st.src[s.src||'genre']={n:0,l:0});ss.n++;if(type!=='nope')ss.l++;
+}
+function explain(s){
+  const{p,parts}=estimate(s,false);const A=s.artists[0];
+  let why;
+  switch(s.src){
+    case 'fav':why=`🎤 ${A} sevdiğin için`;break;
+    case 'graph':{const v=s.via||viaOf(A);why=v&&v!==A?`🕸️ ${v} sevdiğin için ağdan bulundu`:`🕸️ Sanatçı ağından keşif`;break}
+    case 'personal':why='💚 Spotify geçmişine göre';break;
+    case 'explore':why=`🧭 Keşif: ${parts.g||'yeni tür'}`;break;
+    default:why=parts.g?`🎯 ${parts.g} zevkine göre`:'🎯 Zevkine göre';
+  }
+  return{p,why};
+}
+
+
+/* havuzu buda: tahmini çok düşük kalan adayları at, yerine taze aday gelsin */
+function prunePool(){
+  if(pool.length<=4)return;
+  const sc=pool.map(t=>[t,estimate(t,false).p]).sort((a,b)=>b[1]-a[1]);
+  pool=sc.filter(([,p],i)=>i<4||p>=.24).map(([t])=>t);
+}
+/* havuzdan en iyi iki adayı seç (her kaydırmadan sonra yeniden sıralanır) */
+let shown=[];   // [üst, arka]
+function chooseNext(){
+  const cand=pool.filter(t=>!filt()||!t.genre||t.genre===filt());
+  if(!cand.length)return[];
+  const scored=cand.map(t=>[t,rankScore(t)]).sort((a,b)=>b[1]-a[1]);
+  const top=scored[0][0];
+  const second=scored.find(([t])=>t.artists[0]!==top.artists[0])?.[0]||scored[1]?.[0];
+  return second?[top,second]:[top];
+}
+
+/* =====================================================================
+   SPOTIFY WEB API — PKCE girişi (backend yok, şifre görülmez)
+   ===================================================================== */
+const CLIENT_ID='__CLIENT_ID__';
+const REDIRECT_URI=location.origin+location.pathname;
+const SCOPES='playlist-modify-private playlist-modify-public playlist-read-private user-library-modify user-library-read user-top-read';
+const API='https://api.spotify.com/v1';
+const LIKED_URL='https://open.spotify.com/collection/tracks';
+const PL_NAME='SwipeTune ❤️';
+const GENRE_Q={'Türkçe Rock':'turkish rock','Türkçe Pop':'turkish pop','Türkçe Rap':'turkish hip hop','Anadolu Rock':'anadolu rock','Arabesk':'arabesk',
+  'Pop':'pop','Rock':'rock','Rap':'rap','R&B':'r&b','Indie':'indie','Elektronik':'electronic','Metal':'metal','Jazz':'jazz','Lo-fi':'lo-fi',
+  'Phonk':'phonk','K-Pop':'k-pop','Latin':'latin','Alternatif':'alternative'};
+let live=false,me=null,TOP=[];
+let pl=ls.get('playlist',null),plChecked=false;
+const usePlaylist=()=>S.dest!=='library';
+const destName=()=>usePlaylist()?`"${PL_NAME}" playlistine`:'Beğenilen Şarkılar\'a';
+const readyText=()=>'Spotify bağlı · beğeniler '+destName()+' gider';
+const rand=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
+
+function b64url(buf){return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+async function login(){
+  const verifier=b64url(crypto.getRandomValues(new Uint8Array(64)));
+  const challenge=b64url(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)));
+  ls.set('verifier',verifier);
+  const p=new URLSearchParams({client_id:CLIENT_ID,response_type:'code',redirect_uri:REDIRECT_URI,scope:SCOPES,code_challenge_method:'S256',code_challenge:challenge});
+  location.href='https://accounts.spotify.com/authorize?'+p;
+}
+async function tokenRequest(body){
+  const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
+  const j=await r.json();
+  if(!r.ok)throw new Error(j.error_description||j.error||'token hatası');
+  ls.set('tok',{access:j.access_token,refresh:j.refresh_token||ls.get('tok',{})?.refresh,exp:Date.now()+(j.expires_in-60)*1000});
+}
+async function handleRedirect(){
+  const p=new URLSearchParams(location.search);
+  if(p.get('error')){history.replaceState({},'',REDIRECT_URI);toast('Giriş iptal edildi');return}
+  const code=p.get('code');if(!code)return;
+  history.replaceState({},'',REDIRECT_URI);
+  await tokenRequest({client_id:CLIENT_ID,grant_type:'authorization_code',code,redirect_uri:REDIRECT_URI,code_verifier:ls.get('verifier','')});
+}
+async function token(){
+  const t=ls.get('tok',null);if(!t)return null;
+  if(Date.now()<t.exp)return t.access;
+  try{await tokenRequest({client_id:CLIENT_ID,grant_type:'refresh_token',refresh_token:t.refresh});return ls.get('tok').access}
+  catch(e){localStorage.removeItem('stl_tok');return null}
+}
+function logout(){['tok','me','playlist'].forEach(k=>localStorage.removeItem('stl_'+k));location.reload()}
+async function sp(path,opts={},tries=0){
+  const t=await token();
+  if(!t){showLogin();throw Object.assign(new Error('giriş yok'),{code:'auth'})}
+  const r=await fetch(path.startsWith('http')?path:API+path,{...opts,headers:{Authorization:'Bearer '+t,'Content-Type':'application/json',...(opts.headers||{})}});
+  if(r.status===401&&tries<1){const x=ls.get('tok');if(x){x.exp=0;ls.set('tok',x)}return sp(path,opts,tries+1)}
+  if(r.status===429&&tries<3){const w=(+r.headers.get('Retry-After')||2)*1000;sync('busy',`Spotify yavaşla dedi, ${Math.ceil(w/1000)} sn bekleniyor…`);await new Promise(res=>setTimeout(res,w));return sp(path,opts,tries+1)}
+  if(!r.ok){const j=await r.json().catch(()=>({}));throw Object.assign(new Error(j?.error?.message||('HTTP '+r.status)),{status:r.status})}
+  const txt=await r.text();try{return txt?JSON.parse(txt):null}catch(e){return null}
+}
+function errText(e){
+  if(e?.status===403)return 'Spotify erişimi reddetti — hesabın uygulamaya ekli değil (Dashboard → User Management)';
+  if(e?.code==='auth')return 'Giriş gerekli';
+  return 'Spotify hatası: '+(e?.message||'bilinmiyor');
+}
+
+/* ---------- playlist (Shazam gibi) ---------- */
+async function ensurePlaylist(){
+  if(pl&&plChecked)return pl;
+  if(pl){try{await sp(`/playlists/${pl.id}?fields=id`);plChecked=true;return pl}catch(e){pl=null}}
+  let url='/me/playlists?limit=50';
+  for(let i=0;i<6&&url;i++){
+    const j=await sp(url);
+    const f=(j?.items||[]).find(p=>p&&p.name===PL_NAME&&(!me||p.owner?.id===me.id));
+    if(f){pl={id:f.id,url:f.external_urls?.spotify||('https://open.spotify.com/playlist/'+f.id)};break}
+    url=j?.next;
+  }
+  if(!pl){
+    const p=await sp('/me/playlists',{method:'POST',body:JSON.stringify({name:PL_NAME,public:false,description:'SwipeTune\'da sağa kaydırdığın şarkılar otomatik buraya düşer.'})});
+    pl={id:p.id,url:p.external_urls?.spotify||('https://open.spotify.com/playlist/'+p.id)};
+  }
+  plChecked=true;ls.set('playlist',pl);return pl;
+}
+let plChain=Promise.resolve();
+function pushLike(item){
+  // sıralı gönder: aynı anda iki playlist oluşmasın
+  plChain=plChain.then(()=>doPush(item));return plChain;
+}
+async function doPush(item){
+  if(!item.uri){item.status='local';return}
+  item.status='pending';saveAll();sync('busy',`"${item.name}" Spotify'a ekleniyor…`);
+  try{
+    if(usePlaylist()){
+      const p=await ensurePlaylist();
+      await sp(`/playlists/${p.id}/items`,{method:'POST',body:JSON.stringify({uris:[item.uri]})});
+      item.dest='playlist';sync('ok',`✓ "${item.name}" ${PL_NAME} playlistine eklendi`);
+    }else{
+      await sp('/me/library?uris='+encodeURIComponent(item.uri),{method:'PUT'});
+      item.dest='library';sync('ok',`✓ "${item.name}" Beğenilen Şarkılar'a eklendi`);
+    }
+    item.status='ok';
+  }catch(e){item.status='err';sync('err','Eklenemedi: '+errText(e))}
+  saveAll();if($('drawer').classList.contains('open')&&$('drawerTitle').dataset.v==='list')openList();
+}
+async function unlike(item){
+  if(!item.uri||item.status!=='ok')return;
+  try{
+    if(item.dest==='playlist'&&pl)await sp(`/playlists/${pl.id}/items`,{method:'DELETE',body:JSON.stringify({items:[{uri:item.uri}]})});
+    else await sp('/me/library?uris='+encodeURIComponent(item.uri),{method:'DELETE'});
+    sync('ok',`↺ "${item.name}" Spotify'dan çıkarıldı`);
+  }catch(e){sync('err','Spotify\'dan çıkarılamadı: '+errText(e))}
+}
+
+/* ---------- arama ---------- */
+function mapTrack(t){
+  const im=t.album?.images||[];
+  return{id:t.uri,uri:t.uri,name:t.name,artists:(t.artists||[]).map(a=>a.name),album:t.album?.name||'',
+    img:im[0]?.url||null,thumb:(im[im.length-1]||im[0])?.url||null,year:(t.album?.release_date||'').slice(0,4),
+    url:t.external_urls?.spotify||null,dur:t.duration_ms?Math.round(t.duration_ms/1000):null,explicit:t.explicit};
+}
+async function searchTracks(q,offset){
+  const p=new URLSearchParams({q,type:'track',limit:'10',offset:String(offset),market:'from_token'});
+  const j=await sp('/search?'+p);
+  return(j?.tracks?.items||[]).filter(t=>t&&t.uri&&t.name).map(mapTrack);
+}
+function webQuery(plan){
+  // sanatçı araması; tür/keşif kaynaklarında bazen doğrudan tür filtresi (yeni sanatçı getirir)
+  if(plan.artist&&!(plan.genre&&(plan.src==='explore'||plan.src==='genre')&&Math.random()<.35))
+    return{q:`artist:"${plan.artist}"`,offset:rand(0,plan.src==='fav'?25:12)};
+  const gq=GENRE_Q[plan.genre]||plan.genre||'pop';
+  plan.artist=null;
+  return{q:`genre:"${gq}"`,offset:rand(0,180)};
+}
+
+/* ---------- aday havuzu ---------- */
+let pool=[],loading=false,misses=0;
+const inPool=id=>pool.some(x=>x.id===id);
+function ingest(plan,tracks){
+  for(const t of tracks){
+    if(plan.artist)for(const x of t.artists)addEdge(plan.artist,x,1);
+    for(let i=0;i<t.artists.length;i++)for(let j=i+1;j<t.artists.length;j++)addEdge(t.artists[i],t.artists[j],2);
+    const A=t.artists[0];
+    if(plan.genre&&!M.aGenre[A])M.aGenre[A]=plan.genre;
+    if(plan.genre&&A!==plan.artist){const f=M.found[plan.genre]||(M.found[plan.genre]=[]);if(!f.includes(A)&&!(SEEDS[plan.genre]||[]).includes(A)){f.push(A);M.found[plan.genre]=f.slice(-80)}}
+  }
+  pruneGraph();
+  const fresh=tracks.filter(t=>!seen.has(t.id)&&!inPool(t.id)&&!likes.some(l=>l.id===t.id));
+  const per={},out=[];
+  for(const t of fresh.sort(()=>Math.random()-.5)){const A=t.artists[0];if((per[A]=(per[A]||0)+1)>3)continue;
+    t.src=plan.src;t.genre=M.aGenre[A]||plan.genre||null;t.via=plan.src==='graph'&&plan.artist?viaOf(plan.artist):null;out.push(t)}
+  pool.push(...out.slice(0,6));
+  return out.length;
+}
+async function refill(){
+  if(loading||!live)return;loading=true;
+  try{
+    let guard=0;
+    while(pool.length<12&&guard++<4){
+      const plan=planQuery();const{q,offset}=webQuery(plan);
+      sync('busy','Yeni şarkılar aranıyor…');
+      let tracks=await searchTracks(q,offset);
+      if(!tracks.length&&offset>0)tracks=await searchTracks(q,0);
+      const got=ingest(plan,tracks);
+      misses=got?0:misses+1;if(!got)upd('s',plan.src,0,.3);
+      if(!document.querySelector('#deck .card')&&pool.length)render();
+      if(misses>6)break;
+    }
+    saveAll();sync('ok',readyText());
+  }catch(e){if(e.code!=='auth'){sync('err',errText(e));if(e.status===403)showError('Spotify erişimi reddetti','Bu hesap uygulamaya ekli değil. Spotify Dashboard → SwipeTune → User Management\'tan e-postanı ekle.')}}
+  loading=false;
+  if(!document.querySelector('#deck .card'))render();
+}
+function showError(t,m){deck.innerHTML=`<div class="center"><div style="font-size:40px">⚠️</div><b>${esc(t)}</b><span>${esc(m)}</span><button class="btn ghost" onclick="location.reload()">Tekrar dene</button></div>`}
+
+/* =====================================================================
+   ÖNİZLEME — Deezer'ın açık API'si (JSONP, anahtar gerekmez)
+   ===================================================================== */
+const PREV={};
+const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/ı/g,'i').replace(/[^a-z0-9]/g,'');
+function deezerPreview(s){
+  if(s.id in PREV)return Promise.resolve(PREV[s.id]);
+  if(PREV['_p'+s.id])return PREV['_p'+s.id];
+  const pr=new Promise(res=>{
+    const cb='dz'+Math.random().toString(36).slice(2);const sc=document.createElement('script');
+    const done=v=>{clearTimeout(to);try{delete window[cb]}catch(e){window[cb]=undefined}sc.remove();PREV[s.id]=v;res(v)};
+    const to=setTimeout(()=>done(null),7000);
+    window[cb]=j=>{
+      const d=(j&&j.data)||[];const A=norm(s.artists[0]),T=norm(s.name).slice(0,12);
+      const hit=d.find(x=>x.preview&&norm(x.artist?.name)===A&&norm(x.title).startsWith(T))||d.find(x=>x.preview&&norm(x.artist?.name)===A)
+        ||d.find(x=>x.preview&&(norm(x.artist?.name).includes(A)||A.includes(norm(x.artist?.name)))&&norm(x.title).startsWith(T));
+      done(hit?hit.preview:null);
+    };
+    const title=s.name.replace(/\s*[\(\[].*?[\)\]]\s*/g,' ').replace(/\s+-\s+.*$/,'').trim();
+    sc.src='https://api.deezer.com/search?q='+encodeURIComponent(`artist:"${s.artists[0]}" track:"${title}"`)+'&limit=8&output=jsonp&callback='+cb;
+    sc.onerror=()=>done(null);document.head.appendChild(sc);
+  });
+  PREV['_p'+s.id]=pr;return pr;
+}
+const audio=new Audio();audio.preload='auto';
+let playingId=null;
+function setPlayUI(state,label){
+  const b=document.querySelector('#deck .card:last-child [data-play]');if(!b)return;
+  b.textContent=state==='play'?'⏸':state==='none'?'🔇':'▶';
+  b.title=label||'';b.classList.toggle('dim',state==='none');
+  const h=document.querySelector('#deck .card:last-child .hint');if(h)h.textContent=label||'';
+}
+/* jest (kaydırma) içinde senkron çağrılabilsin diye önbellekteyse hemen çalar */
+function playNow(s){
+  if(!s)return;
+  if(S.sound===false){audio.pause();setPlayUI('pause','Ses kapalı');return}
+  const u=PREV[s.id];
+  if(u===undefined){audio.pause();playingId=null;deezerPreview(s).then(()=>{if(shown[0]?.id===s.id)playNow(s)});setPlayUI('pause','Önizleme yükleniyor…');return}
+  if(!u){audio.pause();playingId=null;setPlayUI('none','Önizleme bulunamadı');return}
+  if(playingId!==s.id){audio.src=u;playingId=s.id}
+  audio.currentTime=0;
+  const p=audio.play();
+  if(p&&p.catch)p.then(()=>setPlayUI('play','')).catch(()=>setPlayUI('pause','Dinlemek için ▶ dokun'));
+}
+function togglePlay(){
+  const s=shown[0];if(!s)return;
+  if(playingId===s.id&&!audio.paused){audio.pause();setPlayUI('pause','Duraklatıldı');return}
+  if(playingId===s.id&&audio.src){audio.play().then(()=>setPlayUI('play','')).catch(()=>{});return}
+  if(S.sound===false){S.sound=true;saveAll();updateSoundBtn()}
+  playNow(s);
+}
+audio.addEventListener('timeupdate',()=>{const b=document.querySelector('#deck .card:last-child .prog i');if(b&&audio.duration)b.style.width=(audio.currentTime/audio.duration*100)+'%'});
+audio.addEventListener('ended',()=>setPlayUI('pause','Bitti — tekrar dinle ▶'));
+function prefetchPreviews(){for(const t of pool.map(t=>[t,estimate(t,false).p]).sort((a,b)=>b[1]-a[1]).slice(0,4).map(x=>x[0]))deezerPreview(t)}
+
+/* =====================================================================
+   ARAYÜZ
+   ===================================================================== */
+const deck=$('deck');
+let forcedTop=null,topId=null,shownAt=0,clicked=false,nextPair=null;
+function cover(s,cls='art'){return s.img?`<div class="${cls}" style="background:#222 url('${esc(s.img)}') center/cover no-repeat"></div>`:`<div class="${cls}">${art(s)}</div>`}
+function cardHTML(s){
+  const{p,why}=explain(s);
+  const tags=[`<span class="tag match-tag" style="--m:${pct(p)}%">Uyum %${pct(p)}</span>`];
+  if(s.genre)tags.push(`<span class="tag">${esc(s.genre)}</span>`);
+  if(s.year)tags.push(`<span class="tag">${esc(s.year)}</span>`);
+  if(s.explicit)tags.push(`<span class="tag">🅴</span>`);
+  return `${cover(s)}<div class="shade"></div><div class="prog"><i></i></div>
+  <div class="stamp like">BEĞEN</div><div class="stamp nope">GEÇ</div><div class="stamp super">SÜPER</div>
+  <button class="playbtn" data-play>▶</button>
+  <div class="info"><h2>${esc(s.name)}</h2><div class="artist">${esc(s.artists.join(', '))}</div>
+  <div class="meta">${tags.join('')}${s.album?`<span class="tag">💿 ${esc(s.album)}</span>`:''}</div>
+  <div class="reason">${esc(why)}</div><div class="hint"></div>
+  <div class="links"><a href="${esc(s.url||spSearch(s))}" target="_blank" rel="noopener" data-open>Spotify'da aç</a><a class="alt" href="${esc(ytSearch(s))}" target="_blank" rel="noopener" data-open>YouTube</a></div></div>`;
+}
+function render(){
+  deck.innerHTML='';
+  let pair=nextPair||chooseNext();nextPair=null;
+  pair=pair.filter(x=>inPool(x.id)||x.id===forcedTop);
+  if(forcedTop){const f=pool.find(x=>x.id===forcedTop);if(f)pair=[f,...pair.filter(x=>x.id!==f.id)].slice(0,2);forcedTop=null}
+  if(pair.length<2){const extra=chooseNext().filter(x=>!pair.some(y=>y.id===x.id));pair=[...pair,...extra].slice(0,2)}
+  shown=pair;
+  if(!pair.length){
+    audio.pause();
+    deck.innerHTML=misses>6
+      ?`<div class="center"><div style="font-size:40px">🎧</div><b>Bu filtrede yeni şarkı bulunamadı</b><span>Başka bir tür seç.</span></div>`
+      :`<div class="center"><div class="spinner"></div><span>Şarkılar geliyor…</span></div>`;
+    if(!loading&&misses<=6)refill();
+    return;
+  }
+  [...pair].reverse().forEach((s,i,arr)=>{
+    const el=document.createElement('div');el.className='card'+(i<arr.length-1?' behind':'');
+    el.innerHTML=cardHTML(s);deck.appendChild(el);
+    if(i===arr.length-1){
+      attachDrag(el);
+      el.querySelectorAll('[data-open]').forEach(a=>a.addEventListener('click',()=>{clicked=true;audio.pause()}));
+      el.querySelector('[data-play]').addEventListener('click',e=>{e.stopPropagation();clicked=true;togglePlay()});
+    }
+  });
+  if(topId!==pair[0].id){topId=pair[0].id;shownAt=performance.now();clicked=false;playNow(pair[0])}
+  else if(playingId===pair[0].id&&!audio.paused)setPlayUI('play','');
+  if(pair[1])deezerPreview(pair[1]);
+  prefetchPreviews();
+  if(pool.length<7)refill();
+}
+function attachDrag(el){
+  let sx=0,sy=0,dx=0,dy=0,drag=false;
+  const st={like:el.querySelector('.stamp.like'),nope:el.querySelector('.stamp.nope'),sup:el.querySelector('.stamp.super')};
+  el.addEventListener('pointerdown',e=>{if(e.target.closest('a,button'))return;drag=true;sx=e.clientX;sy=e.clientY;el.setPointerCapture(e.pointerId);el.style.transition='none'});
+  el.addEventListener('pointermove',e=>{
+    if(!drag)return;dx=e.clientX-sx;dy=e.clientY-sy;
+    el.style.transform=`translate(${dx}px,${dy}px) rotate(${dx/18}deg)`;
+    st.like.style.opacity=clamp(dx/100,0,1);st.nope.style.opacity=clamp(-dx/100,0,1);
+    st.sup.style.opacity=Math.abs(dx)<60?clamp(-dy/110,0,1):0;
+  });
+  const end=()=>{if(!drag)return;drag=false;
+    if(dx>110)decide('like');else if(dx<-110)decide('nope');else if(dy<-120&&Math.abs(dx)<80)decide('super');
+    else{
+      if(Math.abs(dx)<8&&Math.abs(dy)<8)togglePlay();   // karta dokununca çal/durdur
+      el.style.transition='transform .3s';el.style.transform='';Object.values(st).forEach(x=>x.style.opacity=0)}
+    dx=dy=0};
+  el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);
+}
+
+let busy=false,undoStack=[];
+function decide(type){
+  if(busy||!shown.length)return;
+  const el=deck.lastElementChild;if(!el||!el.classList.contains('card'))return;
+  busy=true;const s=shown[0];
+  const dwell=(performance.now()-shownAt)/1000;
+  el.style.transition='transform .35s ease-out, opacity .35s';
+  el.querySelector(type==='like'?'.stamp.like':type==='nope'?'.stamp.nope':'.stamp.super').style.opacity=1;
+  const w=innerWidth;
+  el.style.transform=type==='like'?`translate(${w}px,-40px) rotate(28deg)`:type==='nope'?`translate(${-w}px,-40px) rotate(-28deg)`:`translate(0,${-innerHeight}px) rotate(-6deg)`;
+  el.style.opacity=0;
+  undoStack.push({s,type,snap:JSON.stringify(M)});if(undoStack.length>15)undoStack.shift();
+  pool=pool.filter(x=>x.id!==s.id);
+  learn(s,type,dwell,clicked);
+  prunePool();
+  seen.add(s.id);
+  let item=null;
+  if(type!=='nope'){item={id:s.id,uri:s.uri,name:s.name,artist:s.artists.join(', '),artists:s.artists,url:s.url,img:s.thumb||s.img,super:type==='super',status:'pending'};likes.unshift(item);updateCount()}
+  saveAll();
+  if(item)pushLike(item);
+  // sıradaki kartı hemen seç ve sesini bu dokunuşun içinde başlat (mobil tarayıcılar jest ister)
+  nextPair=chooseNext();
+  if(nextPair[0]){topId=nextPair[0].id;shownAt=performance.now()+300;clicked=false;playNow(nextPair[0])}else audio.pause();
+  setTimeout(()=>{busy=false;render();if(type==='super')showMatch(s)},300);
+}
+function undo(){
+  const h=undoStack.pop();if(!h){toast('Geri alınacak bir şey yok');return}
+  M=JSON.parse(h.snap);pprStep=-1;seen.delete(h.s.id);
+  if(h.type!=='nope'){const it=likes.find(x=>x.id===h.s.id);likes=likes.filter(x=>x.id!==h.s.id);if(it)unlike(it);updateCount()}
+  saveAll();if(!inPool(h.s.id))pool.unshift(h.s);forcedTop=h.s.id;topId=null;render();toast('↺ Geri alındı');
+}
+function updateCount(){$('count').textContent=likes.length}
+function updateSoundBtn(){$('soundBtn').textContent=S.sound===false?'🔇':'🔊'}
+
+function renderFilters(){
+  const favs=[...GENRES].sort((a,b)=>mean(dec('g',b))-mean(dec('g',a)));
+  $('filters').innerHTML=['Hepsi',...favs].map(g=>`<button class="chip ${S.filter===g?'on':''}" data-g="${esc(g)}">${esc(g)}</button>`).join('');
+  $('filters').querySelectorAll('.chip').forEach(c=>c.onclick=()=>{S.filter=c.dataset.g;saveAll();renderFilters();misses=0;topId=null;render();if(!loading)refill()});
+}
+
+/* ---------- çekmeceler ---------- */
+function openDrawer(){$('drawer').classList.add('open');$('drawerBg').classList.add('open')}
+function closeList(){$('drawer').classList.remove('open');$('drawerBg').classList.remove('open')}
+function openList(){
+  $('drawerTitle').textContent=`Beğendiklerin (${likes.length})`;$('drawerTitle').dataset.v='list';
+  $('list').innerHTML=likes.length?likes.map(x=>{
+    const s={name:x.name,artists:x.artists||[x.artist],img:x.img};
+    const st=x.status==='ok'?'<span title="Spotify\'da">✅</span>':x.status==='err'?`<button class="icon-btn" data-retry="${esc(x.id)}">Tekrar</button>`:x.status==='pending'?'⏳':'';
+    return `<div class="row">${s.img?`<img class="thumbimg" src="${esc(s.img)}" alt="">`:`<div class="thumb">${art(s)}</div>`}<div class="t"><b>${x.super?'★ ':''}${esc(x.name)}</b><small>${esc(x.artist)}</small></div>${st}<a href="${esc(x.url||spSearch(s))}" target="_blank" rel="noopener" title="Spotify">▶</a></div>`}).join('')
+    :`<p style="color:var(--muted);padding:20px;text-align:center">Henüz beğendiğin yok. Sağa kaydır 👉</p>`;
+  $('list').querySelectorAll('[data-retry]').forEach(b=>b.onclick=()=>{const it=likes.find(x=>x.id===b.dataset.retry);if(it)pushLike(it)});
+  $('drawerFoot').innerHTML=`${pl?`<a class="btn spotify" href="${esc(pl.url)}" target="_blank" rel="noopener">Spotify'da ${esc(PL_NAME)} playlistini aç</a>`:''}<a class="btn ${pl?'ghost':'spotify'}" href="${LIKED_URL}" target="_blank" rel="noopener">Beğenilen Şarkılar'ı aç</a><button class="btn ghost" id="copyBtn">Listeyi kopyala</button>`;
+  $('copyBtn').onclick=async()=>{const t=likes.map(x=>`${x.name} — ${x.artist}`).join('\n');if(!t){toast('Liste boş');return}try{await navigator.clipboard.writeText(t);toast('📋 Kopyalandı')}catch(e){toast('Kopyalanamadı')}};
+  openDrawer();
+}
+function bar(label,d,extra=''){
+  const m=mean(d),n=d.n;const conf=n<1?'çok az veri':n<3?'az veri':n<8?'orta':'güçlü';
+  return `<div class="bar"><div class="bar-top"><span>${esc(label)}</span><span>%${pct(m)} <small>${conf}${extra}</small></span></div>
+    <div class="bar-track"><div class="bar-fill" style="width:${pct(m)}%;opacity:${.35+Math.min(.65,n/8)}"></div></div></div>`;
+}
+function openBrain(){
+  $('drawerTitle').textContent='🧠 Algoritma beynin';$('drawerTitle').dataset.v='brain';
+  const st=M.stats,n=st.n||0;
+  const gen=GENRES.map(g=>[g,dec('g',g)]).filter(([,d])=>d.n>.3).sort((a,b)=>mean(b[1])-mean(a[1])).slice(0,8);
+  const art_=Object.keys(M.arms.a).map(k=>[k,dec('a',k)]).filter(([,d])=>d.n>.8).sort((a,b)=>mean(b[1])-mean(a[1])).slice(0,8);
+  const src=SOURCES.map(s=>[s,dec('s',s)]).sort((a,b)=>mean(b[1])-mean(a[1]));
+  const b=bucket();
+  const ctx=GENRES.map(g=>[g,dec('c',b+'|'+g)]).filter(([,d])=>d.n>.5).sort((x,y)=>mean(y[1])-mean(x[1]))[0];
+  const nodes=Object.keys(M.graph).length,edges=Object.values(M.graph).reduce((s,o)=>s+Object.keys(o).length,0)/2;
+  const ppr=Object.entries(computePPR()).filter(([k])=>dec('a',k).n<1.2).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k])=>k);
+  $('list').innerHTML=`<div class="brain">
+   <div class="kpis"><div><b>${n}</b><small>kaydırma</small></div><div><b>%${n?pct(st.like/n):0}</b><small>beğeni oranı</small></div><div><b>${n?(st.dwellSum/n).toFixed(1):0}sn</b><small>ort. karar</small></div></div>
+   <h4>Tür zevkin</h4>${gen.length?gen.map(([g,d])=>bar(g,d)).join(''):'<p class="muted">Kaydırdıkça burası dolacak.</p>'}
+   <h4>Sanatçıların</h4>${art_.length?art_.map(([a,d])=>bar(a,d)).join(''):'<p class="muted">Henüz yeterli veri yok.</p>'}
+   <h4>Sende işe yarayan öneri yöntemleri</h4>
+   ${src.map(([s,d])=>{const x=st.src[s];return bar(SRC_LABEL[s],d,x?` · ${x.l}/${x.n}`:'')}).join('')}
+   <h4>Şu an (${b})</h4><p class="muted">${ctx?`Bu saatlerde en çok <b>${esc(ctx[0])}</b> beğeniyorsun.`:'Bu saat dilimi için henüz desen yok.'}</p>
+   <h4>Sanatçı ağı</h4><p class="muted">${nodes} sanatçı · ${Math.round(edges)} bağlantı.${ppr.length?` Ağa göre sıradaki keşiflerin: <b>${ppr.map(esc).join(', ')}</b>`:''}</p>
+   <details><summary>Nasıl çalışıyor?</summary><p class="muted">Her tür, sanatçı ve öneri yöntemi için bir Beta dağılımı tutuluyor (beğeni = başarı, geçme = başarısızlık) ve her seferinde bu dağılımlardan örnek çekiliyor (Thompson Sampling). Sanatçının ilk tahmini türüne olan zevkinden geliyor (hiyerarşik Bayes). Kararsız bakıp geçmek anında atmaktan az ceza alıyor; önizlemeyi açıp dinlemek yarım puan. Eski kararlar yavaşça unutuluyor. Birlikte çıkan ve birlikte beğendiğin sanatçılar bir ağ oluşturuyor; sevdiğin sanatçılardan başlayan rastgele yürüyüşle (Kişiselleştirilmiş PageRank) komşu sanatçılar bulunuyor. Spotify'da en çok dinlediğin sanatçılar başlangıç bilgisi olarak kullanılıyor.</p></details>
+  </div>`;
+  $('drawerFoot').innerHTML='';openDrawer();
+}
+function openMenu(){
+  $('drawerTitle').textContent='Ayarlar';$('drawerTitle').dataset.v='menu';
+  $('list').innerHTML=`<div style="padding:10px 6px;display:flex;flex-direction:column;gap:12px">
+    <div style="color:var(--muted)">Giriş: <b style="color:var(--text)">${esc(me?.display_name||me?.id||'—')}</b></div>
+    <div style="color:var(--muted)">Beğeniler nereye gitsin?</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip ${S.dest!=='library'?'on':''}" id="dPl">${esc(PL_NAME)} playlisti</button><button class="chip ${S.dest==='library'?'on':''}" id="dLib">Beğenilen Şarkılar</button></div>
+    <button class="btn ghost" id="mTaste">Algoritmayı sıfırla (zevk profili)</button>
+    <button class="btn ghost" id="mSeen">Görülen şarkıları sıfırla (${seen.size})</button>
+    <button class="btn ghost" id="mLikes">Beğeni listesini temizle</button>
+    <button class="btn ghost" id="mOut" style="color:var(--nope)">Çıkış yap</button>
+    <p style="color:var(--muted);font-size:12px">Önizlemeler Deezer'dan gelir; bazı şarkılarda bulunmayabilir. Listeyi temizlemek Spotify'daki şarkılarına dokunmaz.</p></div>`;
+  $('drawerFoot').innerHTML='';
+  $('dPl').onclick=()=>{S.dest='playlist';saveAll();sync('ok',readyText());openMenu()};
+  $('dLib').onclick=()=>{S.dest='library';saveAll();sync('ok',readyText());openMenu()};
+  $('mTaste').onclick=function(){if(this.dataset.armed){M=newModel();pprStep=-1;S.onboarded=false;saveAll();closeList();buildOnb();$('onb').classList.remove('hide')}else{this.dataset.armed=1;this.textContent='Emin misin? Tekrar dokun'}};
+  $('mSeen').onclick=()=>{seen=new Set();saveAll();misses=0;toast('Sıfırlandı');openMenu();if(!shown.length)render()};
+  $('mLikes').onclick=function(){if(this.dataset.armed){likes=[];saveAll();updateCount();closeList();toast('Liste temizlendi')}else{this.dataset.armed=1;this.textContent='Emin misin? Tekrar dokun'}};
+  $('mOut').onclick=logout;
+  openDrawer();
+}
+function showMatch(s){
+  $('matchDisc').innerHTML=s.img?`<img src="${esc(s.img)}" style="width:100%;height:100%;object-fit:cover" alt="">`:art(s);
+  $('matchTitle').textContent=s.name;$('matchArtist').textContent=s.artists.join(', ');
+  $('matchText').textContent=`Spotify'da ${destName()} eklendi. Algoritma bunu güçlü sinyal olarak aldı.`;
+  $('match').classList.add('open');
+}
+function showLogin(){$('login').classList.remove('hide')}
+
+/* ---------- açılış ---------- */
+function buildOnb(){
+  const picked=new Set(GENRES.filter(g=>mean(dec('g',g))>.6));
+  $('onbGrid').innerHTML=GENRES.map(g=>`<button class="chip ${picked.has(g)?'on':''}" data-g="${esc(g)}">${esc(g)}</button>`).join('');
+  $('onbGrid').querySelectorAll('.chip').forEach(c=>c.onclick=()=>{picked.has(c.dataset.g)?picked.delete(c.dataset.g):picked.add(c.dataset.g);c.classList.toggle('on')});
+  $('startBtn').onclick=()=>{
+    if(!picked.size){toast('En az bir tür seç');return}
+    picked.forEach(g=>{if(mean(dec('g',g))<.7)upd('g',g,1,2.5)});
+    S.onboarded=true;saveAll();$('onb').classList.add('hide');renderFilters();pool=[];misses=0;topId=null;render();
+  };
+}
+$('likeBtn').onclick=()=>decide('like');$('nopeBtn').onclick=()=>decide('nope');$('superBtn').onclick=()=>decide('super');
+$('undoBtn').onclick=undo;$('openList').onclick=openList;$('closeList').onclick=closeList;$('drawerBg').onclick=closeList;
+$('menuBtn').onclick=openMenu;$('brainBtn').onclick=openBrain;$('loginBtn').onclick=login;
+$('soundBtn').onclick=()=>{S.sound=S.sound===false;saveAll();updateSoundBtn();if(S.sound===false)audio.pause();else if(shown[0])playNow(shown[0])};
+$('matchClose').onclick=()=>$('match').classList.remove('open');
+document.addEventListener('keydown',e=>{
+  if(!$('onb').classList.contains('hide')||!$('login').classList.contains('hide'))return;
+  if($('match').classList.contains('open')){if(['Enter','Escape'].includes(e.key))$('match').classList.remove('open');return}
+  if(e.key==='ArrowRight')decide('like');else if(e.key==='ArrowLeft')decide('nope');
+  else if(e.key==='ArrowUp'){e.preventDefault();decide('super')}else if(e.key.toLowerCase()==='z')undo();
+  else if(e.key===' '){e.preventDefault();togglePlay()}
+});
+(async()=>{
+  updateCount();updateSoundBtn();buildOnb();renderFilters();
+  deck.innerHTML=`<div class="center"><div class="spinner"></div><span>Spotify'a bağlanılıyor…</span></div>`;
+  try{await handleRedirect()}catch(e){toast('Giriş hatası: '+e.message)}
+  if(!await token()){showLogin();deck.innerHTML='';return}
+  try{me=await sp('/me');ls.set('me',me);live=true}
+  catch(e){if(e.status===403){showError('Bu hesap uygulamaya ekli değil','Spotify Dashboard → SwipeTune → User Management\'tan bu hesabın e-postasını ekle.');return}}
+  // soğuk başlangıç: en çok dinlediğin sanatçılar
+  try{
+    const j=await sp('/me/top/artists?limit=30&time_range=medium_term');
+    TOP=(j?.items||[]).map(a=>a.name).filter(Boolean);
+    if(TOP.length&&!M.topSeeded){TOP.slice(0,12).forEach((a,i)=>upd('a',a,1,1.2-i*.06));M.topSeeded=true;saveAll()}
+  }catch(e){}
+  sync('ok',readyText());
+  if(!S.onboarded){$('onb').classList.remove('hide');deck.innerHTML='';return}
+  render();
+  likes.filter(x=>x.status==='pending'||x.status==='err').slice(0,5).forEach(pushLike);
+})();
+
+</script>
+</body>
+</html>
