@@ -120,7 +120,8 @@
   <h1>🔥 Swipe<span style="color:var(--accent)">Tune</span></h1>
   <p>Kaydırarak şarkı keşfet. Kart açılınca şarkı çalar; sağa kaydırdıkların otomatik olarak Spotify'daki <b>SwipeTune ❤️</b> playlistine düşer — Shazam gibi.</p>
   <button class="btn spotify" id="loginBtn" style="border-radius:999px;padding:14px 30px">Spotify ile giriş yap</button>
-  <p style="font-size:12px">Şifren bize gelmez; giriş Spotify'ın kendi sayfasında olur.</p>
+  <button class="btn ghost" id="guestBtn" style="border-radius:999px">Girişsiz dene</button>
+  <p style="font-size:12px">Şifren bize gelmez; giriş Spotify'ın kendi sayfasında olur. Girişsiz modda beğenilerin bu cihazda kalır.</p>
 </div>
 <div class="overlay hide" id="onb">
   <h1>🔥 Swipe<span style="color:var(--accent)">Tune</span></h1>
@@ -374,8 +375,13 @@ function chooseSource(){
 }
 function tsGenre(){
   if(filt())return filt();
-  let best=GENRES[0],bv=-1;
-  for(const g of GENRES){const v=betaS(dec('g',g));if(v>bv){bv=v;best=g}}
+  /* 17 denenmemiş türün hepsinden örnek çekmek, birinin şans eseri bilinen zevki geçmesini
+     neredeyse kesin kılar (en büyük örnek ~0.94). Bu yüzden çoğunlukla bilinen türler arasında
+     yarışılır; denenmemiş türler "keşif" kaynağının işi. */
+  const known=GENRES.filter(g=>dec('g',g).n>.3);
+  const cands=known.length&&Math.random()<.85?known:GENRES;
+  let best=cands[0],bv=-1;
+  for(const g of cands){const v=betaS(dec('g',g));if(v>bv){bv=v;best=g}}
   return best;
 }
 function leastShown(list){
@@ -494,7 +500,11 @@ function chooseNext(){
 }
 
 /* =====================================================================
-   SPOTIFY WEB API — PKCE girişi (backend yok, şifre görülmez)
+   MİMARİ
+   - Keşif, kapaklar, önizlemeler: Deezer açık API (JSONP, anahtar yok)
+   - Spotify: sadece giriş, en çok dinlenen sanatçılar (günde 1 kez)
+     ve beğenilen şarkıyı bulup playliste eklemek
+   - Spotify istek sınırına takılırsa beğeniler kuyruğa alınır
    ===================================================================== */
 const CLIENT_ID='2c1c98194e404adda51ae057eeb73ef5';
 const REDIRECT_URI=location.origin+location.pathname;
@@ -502,27 +512,83 @@ const SCOPES='playlist-modify-private playlist-modify-public playlist-read-priva
 const API='https://api.spotify.com/v1';
 const LIKED_URL='https://open.spotify.com/collection/tracks';
 const PL_NAME='SwipeTune ❤️';
-const GENRE_Q={'Türkçe Rock':'turkish rock','Türkçe Pop':'turkish pop','Türkçe Rap':'turkish hip hop','Anadolu Rock':'anadolu rock','Arabesk':'arabesk',
-  'Pop':'pop','Rock':'rock','Rap':'rap','R&B':'r&b','Indie':'indie','Elektronik':'electronic','Metal':'metal','Jazz':'jazz','Lo-fi':'lo-fi',
-  'Phonk':'phonk','K-Pop':'k-pop','Latin':'latin','Alternatif':'alternative'};
-let live=false,me=null,TOP=[];
-let cooldownUntil=0,backoff=0,cooldownTimer=null;
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-/* arama önbelleği: aynı sorgu için Spotify'a tekrar gitme (24 saat) */
-let SC=ls.get('sc',{});
-function scGet(k){const e=SC[k];return e&&Date.now()-e.t<864e5?e.v:null}
-function scSet(k,v){SC[k]={t:Date.now(),v};const ks=Object.keys(SC);if(ks.length>200)ks.sort((a,b)=>SC[a].t-SC[b].t).slice(0,ks.length-200).forEach(x=>delete SC[x]);ls.set('sc',SC)}
+let live=true;                 // keşif motoru çalışıyor mu (Deezer)
+let spOn=false,me=ls.get('me',null),TOP=[];
 let pl=ls.get('playlist',null),plChecked=false;
+let cooldownUntil=0,backoff=0,cooldownTimer=null;
 const usePlaylist=()=>S.dest!=='library';
 const destName=()=>usePlaylist()?`"${PL_NAME}" playlistine`:'Beğenilen Şarkılar\'a';
-const readyText=()=>'Spotify bağlı · beğeniler '+destName()+' gider';
+const readyText=()=>spOn?('Spotify bağlı · beğeniler '+destName()+' gider'):'Girişsiz mod · beğeniler bu cihazda saklanır';
 const rand=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/ı/g,'i').replace(/[^a-z0-9]/g,'');
 
+/* ---------- önbellek (24 saat) ---------- */
+let SC=ls.get('sc2',{});
+function scGet(k,ttl=864e5){const e=SC[k];return e&&Date.now()-e.t<ttl?e.v:undefined}
+function scSet(k,v){SC[k]={t:Date.now(),v};const ks=Object.keys(SC);if(ks.length>400)ks.sort((a,b)=>SC[a].t-SC[b].t).slice(0,ks.length-400).forEach(x=>delete SC[x]);ls.set('sc2',SC)}
+
+/* =====================================================================
+   DEEZER (JSONP)
+   ===================================================================== */
+let dzLast=0;
+async function dz(path,params={}){
+  const key='dz'+path+JSON.stringify(params);const c=scGet(key);if(c!==undefined)return c;
+  const gap=220-(Date.now()-dzLast);if(gap>0)await sleep(gap);dzLast=Date.now();   // Deezer: 50 istek / 5 sn
+  const t0=performance.now();
+  const j=await new Promise(res=>{
+    const cb='dz'+Math.random().toString(36).slice(2);const sc=document.createElement('script');
+    const done=v=>{clearTimeout(to);try{delete window[cb]}catch(e){window[cb]=undefined}sc.remove();res(v)};
+    const to=setTimeout(()=>done({error:{message:'zaman aşımı'}}),9000);
+    window[cb]=v=>done(v);sc.onerror=()=>done({error:{message:'yüklenemedi'}});
+    const qs=new URLSearchParams({...params,output:'jsonp',callback:cb});
+    sc.src='https://api.deezer.com'+path+'?'+qs;document.head.appendChild(sc);
+  });
+  log(`Deezer ${path.replace(/\d{3,}/g,'#')} → ${j?.error?'HATA '+(j.error.message||j.error.type):'ok'} (${Math.round(performance.now()-t0)}ms)`);
+  if(j&&!j.error)scSet(key,j);
+  return j||{};
+}
+function mapDz(t,fallbackArtist){
+  return{id:'dz'+t.id,dzId:t.id,uri:null,name:t.title_short||t.title,artists:[t.artist?.name||fallbackArtist].filter(Boolean),
+    album:t.album?.title||'',img:t.album?.cover_xl||t.album?.cover_big||null,thumb:t.album?.cover_medium||t.album?.cover_small||null,
+    preview:t.preview||null,dur:t.duration||null,explicit:!!t.explicit_lyrics,url:null,dzLink:t.link||null};
+}
+async function dzArtistId(name){
+  const k='aid:'+norm(name);const c=scGet(k,30*864e5);if(c!==undefined)return c;
+  const j=await dz('/search/artist',{q:name,limit:5});
+  const d=j.data||[];const hit=d.find(a=>norm(a.name)===norm(name))||d[0];
+  const id=hit?hit.id:null;if(!j.error)scSet(k,id);return id;
+}
+async function artistTracks(name){
+  const id=await dzArtistId(name);if(!id)return[];
+  const j=await dz(`/artist/${id}/top`,{limit:50});
+  return(j.data||[]).filter(t=>t&&t.id&&t.title).map(t=>mapDz(t,name));
+}
+async function artistRelated(name){
+  const id=await dzArtistId(name);if(!id)return[];
+  const j=await dz(`/artist/${id}/related`,{limit:20});
+  return(j.data||[]).map(a=>a.name).filter(Boolean);
+}
+/* ilgili sanatçıları grafiğe ve tür havuzuna ekle — algoritmanın ağı buradan büyür */
+const relatedDone=new Set(ls.get('relDone',[]));
+async function expandArtist(name,genre){
+  if(!name||relatedDone.has(name))return;
+  relatedDone.add(name);ls.set('relDone',[...relatedDone].slice(-300));
+  const rel=await artistRelated(name);
+  rel.forEach((r,i)=>{addEdge(name,r,1.6-i*.04);if(genre&&!M.aGenre[r])M.aGenre[r]=genre;
+    if(genre){const f=M.found[genre]||(M.found[genre]=[]);if(!f.includes(r)&&!(SEEDS[genre]||[]).includes(r)){f.push(r);M.found[genre]=f.slice(-80)}}});
+  if(rel.length)log(`  ağ: ${name} → ${rel.length} benzer sanatçı`);
+  pprStep=-1;pruneGraph();
+}
+
+/* =====================================================================
+   SPOTIFY (giriş + yazma)
+   ===================================================================== */
 function b64url(buf){return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
 async function login(){
   const verifier=b64url(crypto.getRandomValues(new Uint8Array(64)));
   const challenge=b64url(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)));
-  ls.set('verifier',verifier);
+  ls.set('verifier',verifier);S.guest=false;saveAll();
   const p=new URLSearchParams({client_id:CLIENT_ID,response_type:'code',redirect_uri:REDIRECT_URI,scope:SCOPES,code_challenge_method:'S256',code_challenge:challenge});
   location.href='https://accounts.spotify.com/authorize?'+p;
 }
@@ -545,38 +611,37 @@ async function token(){
   try{await tokenRequest({client_id:CLIENT_ID,grant_type:'refresh_token',refresh_token:t.refresh});return ls.get('tok').access}
   catch(e){localStorage.removeItem('stl_tok');return null}
 }
-function logout(){['tok','me','playlist'].forEach(k=>localStorage.removeItem('stl_'+k));location.reload()}
+function logout(){['tok','me','playlist'].forEach(k=>localStorage.removeItem('stl_'+k));S.guest=false;saveAll();location.reload()}
 async function sp(path,opts={},tries=0){
+  if(Date.now()<cooldownUntil)throw Object.assign(new Error('Spotify istek sınırı'),{status:429});
   const t=await token();
-  if(!t){showLogin();throw Object.assign(new Error('giriş yok'),{code:'auth'})}
+  if(!t)throw Object.assign(new Error('giriş yok'),{code:'auth'});
   const t0=performance.now(),ac=new AbortController(),to=setTimeout(()=>ac.abort(),15000);
   const short=(opts.method||'GET')+' '+path.split('?')[0];
   let r;
   try{r=await fetch(path.startsWith('http')?path:API+path,{...opts,signal:ac.signal,headers:{Authorization:'Bearer '+t,...(opts.body?{'Content-Type':'application/json'}:{}),...(opts.headers||{})}})}
-  catch(e){clearTimeout(to);log(`${short} → ${e.name==='AbortError'?'ZAMAN AŞIMI':'AĞ HATASI: '+e.message}`);throw Object.assign(new Error(e.name==='AbortError'?'Spotify 15 sn içinde cevap vermedi':'Ağ hatası: '+e.message),{status:0})}
-  clearTimeout(to);log(`${short} → ${r.status} (${Math.round(performance.now()-t0)}ms)`);
+  catch(e){clearTimeout(to);log(`Spotify ${short} → ${e.name==='AbortError'?'ZAMAN AŞIMI':'AĞ HATASI'}`);throw Object.assign(new Error('Spotify\'a ulaşılamadı'),{status:0})}
+  clearTimeout(to);log(`Spotify ${short} → ${r.status} (${Math.round(performance.now()-t0)}ms)`);
   if(r.status===401&&tries<1){const x=ls.get('tok');if(x){x.exp=0;ls.set('tok',x)}return sp(path,opts,tries+1)}
   if(r.status===429){
-    const ra=+r.headers.get('Retry-After')||0;
-    backoff=Math.min(600,backoff?backoff*2:30);
-    const wait=Math.max(ra,backoff);cooldownUntil=Date.now()+wait*1000;
-    log(`  429 → ${wait} sn bekleme`);
-    throw Object.assign(new Error('Spotify istek sınırı'),{status:429,wait});
+    const ra=+r.headers.get('Retry-After')||0;backoff=Math.min(1800,backoff?backoff*2:60);
+    const wait=Math.max(ra,backoff);cooldownUntil=Date.now()+wait*1000;log(`  Spotify 429 → ${wait} sn sonra tekrar`);
+    scheduleQueue();
+    throw Object.assign(new Error('Spotify istek sınırı'),{status:429});
   }
-  if(r.ok)backoff=0;
-  if(!r.ok){const j=await r.json().catch(()=>({}));log('  hata: '+(j?.error?.message||r.status));throw Object.assign(new Error(j?.error?.message||('HTTP '+r.status)),{status:r.status})}
+  if(!r.ok){const j=await r.json().catch(()=>({}));throw Object.assign(new Error(j?.error?.message||('HTTP '+r.status)),{status:r.status})}
+  backoff=0;
   const txt=await r.text();try{return txt?JSON.parse(txt):null}catch(e){return null}
 }
 function errText(e){
+  if(e?.status===429)return 'Spotify istek sınırı — sıraya alındı, sonra eklenecek';
   if(e?.status===403)return 'Spotify erişimi reddetti — hesabın uygulamaya ekli değil (Dashboard → User Management)';
-  if(e?.code==='auth')return 'Giriş gerekli';
+  if(e?.code==='auth')return 'Spotify girişi gerekli';
   return 'Spotify hatası: '+(e?.message||'bilinmiyor');
 }
-
-/* ---------- playlist (Shazam gibi) ---------- */
 async function ensurePlaylist(){
   if(pl&&plChecked)return pl;
-  if(pl){try{await sp(`/playlists/${pl.id}?fields=id`);plChecked=true;return pl}catch(e){pl=null}}
+  if(pl){try{await sp(`/playlists/${pl.id}?fields=id`);plChecked=true;return pl}catch(e){if(e.status===429)throw e;pl=null}}
   let url='/me/playlists?limit=50';
   for(let i=0;i<6&&url;i++){
     const j=await sp(url);
@@ -590,29 +655,42 @@ async function ensurePlaylist(){
   }
   plChecked=true;ls.set('playlist',pl);return pl;
 }
-let plChain=Promise.resolve();
-function pushLike(item){
-  // sıralı gönder: aynı anda iki playlist oluşmasın
-  plChain=plChain.then(()=>doPush(item));return plChain;
+/* Deezer şarkısını Spotify'da bul (önbellekli) */
+async function resolveUri(item){
+  if(item.uri)return item.uri;
+  const k='su:'+norm(item.artists[0])+'|'+norm(item.name);const c=scGet(k,90*864e5);if(c!==undefined){item.uri=c;return c}
+  const clean=item.name.replace(/\s*[\(\[].*?[\)\]]\s*/g,' ').replace(/\s+-\s+.*$/,'').trim();
+  const p=new URLSearchParams({q:`track:"${clean}" artist:"${item.artists[0]}"`,type:'track',limit:'5',market:'from_token'});
+  const j=await sp('/search?'+p);
+  const its=(j?.tracks?.items||[]);const A=norm(item.artists[0]),T=norm(clean);
+  const hit=its.find(t=>(t.artists||[]).some(a=>norm(a.name)===A)&&norm(t.name).startsWith(T.slice(0,10)))||its.find(t=>(t.artists||[]).some(a=>norm(a.name)===A));
+  const uri=hit?hit.uri:null;scSet(k,uri);item.uri=uri;if(hit)item.url=hit.external_urls?.spotify||null;return uri;
 }
+let plChain=Promise.resolve();
+function pushLike(item){plChain=plChain.then(()=>doPush(item)).catch(()=>{});return plChain}
 async function doPush(item){
-  if(!item.uri){item.status='local';return}
+  if(!spOn){item.status='local';saveAll();return}
   item.status='pending';saveAll();sync('busy',`"${item.name}" Spotify'a ekleniyor…`);
   try{
-    if(usePlaylist()){
-      const p=await ensurePlaylist();
-      await sp(`/playlists/${p.id}/items`,{method:'POST',body:JSON.stringify({uris:[item.uri]})});
-      item.dest='playlist';sync('ok',`✓ "${item.name}" ${PL_NAME} playlistine eklendi`);
-    }else{
-      await sp('/me/library?uris='+encodeURIComponent(item.uri),{method:'PUT'});
-      item.dest='library';sync('ok',`✓ "${item.name}" Beğenilen Şarkılar'a eklendi`);
-    }
+    const uri=await resolveUri(item);
+    if(!uri){item.status='notfound';sync('err',`"${item.name}" Spotify'da bulunamadı`);saveAll();refreshList();return}
+    if(usePlaylist()){const p=await ensurePlaylist();await sp(`/playlists/${p.id}/items`,{method:'POST',body:JSON.stringify({uris:[uri]})});item.dest='playlist';sync('ok',`✓ "${item.name}" ${PL_NAME} playlistine eklendi`)}
+    else{await sp('/me/library?uris='+encodeURIComponent(uri),{method:'PUT'});item.dest='library';sync('ok',`✓ "${item.name}" Beğenilen Şarkılar'a eklendi`)}
     item.status='ok';
-  }catch(e){item.status='err';sync('err','Eklenemedi: '+errText(e))}
-  saveAll();if($('drawer').classList.contains('open')&&$('drawerTitle').dataset.v==='list')openList();
+  }catch(e){
+    if(e.status===429){item.status='queued';sync('err','Spotify istek sınırı · beğeniler sıraya alındı, sonra eklenecek')}
+    else{item.status='err';sync('err','Eklenemedi: '+errText(e))}
+  }
+  saveAll();refreshList();
+}
+function refreshList(){if($('drawer').classList.contains('open')&&$('drawerTitle').dataset.v==='list')openList()}
+let queueTimer=null;
+function scheduleQueue(){
+  if(queueTimer)return;
+  queueTimer=setTimeout(()=>{queueTimer=null;const q=likes.filter(x=>x.status==='queued').reverse();if(q.length){log(`sıradaki ${q.length} beğeni Spotify'a gönderiliyor`);q.forEach(pushLike)}},Math.max(1000,cooldownUntil-Date.now()+1500));
 }
 async function unlike(item){
-  if(!item.uri||item.status!=='ok')return;
+  if(!spOn||!item.uri||item.status!=='ok'){if(item.status==='queued')item.status='cancel';return}
   try{
     if(item.dest==='playlist'&&pl)await sp(`/playlists/${pl.id}/items`,{method:'DELETE',body:JSON.stringify({items:[{uri:item.uri}]})});
     else await sp('/me/library?uris='+encodeURIComponent(item.uri),{method:'DELETE'});
@@ -620,118 +698,58 @@ async function unlike(item){
   }catch(e){sync('err','Spotify\'dan çıkarılamadı: '+errText(e))}
 }
 
-/* ---------- arama ---------- */
-function mapTrack(t){
-  const im=t.album?.images||[];
-  return{id:t.uri,uri:t.uri,name:t.name,artists:(t.artists||[]).map(a=>a.name),album:t.album?.name||'',
-    img:im[0]?.url||null,thumb:(im[im.length-1]||im[0])?.url||null,year:(t.album?.release_date||'').slice(0,4),
-    url:t.external_urls?.spotify||null,dur:t.duration_ms?Math.round(t.duration_ms/1000):null,explicit:t.explicit};
-}
-let lastSearch=0;
-async function searchTracks(q,offset){
-  const key=q+'|'+offset;const c=scGet(key);if(c){log(`önbellek: ${q} @${offset}`);return c}
-  const gap=1200-(Date.now()-lastSearch);if(gap>0)await sleep(gap);   // istek patlamasını önle
-  lastSearch=Date.now();
-  const p=new URLSearchParams({q,type:'track',limit:'10',offset:String(offset),market:'from_token'});
-  const j=await sp('/search?'+p);
-  const out=(j?.tracks?.items||[]).filter(t=>t&&t.uri&&t.name).map(mapTrack);
-  scSet(key,out);return out;
-}
-function webQuery(plan){
-  // sanatçı araması; tür/keşif kaynaklarında bazen doğrudan tür filtresi (yeni sanatçı getirir)
-  if(plan.artist&&!(plan.genre&&(plan.src==='explore'||plan.src==='genre')&&Math.random()<.35))
-    return{q:`artist:"${plan.artist}"`,offset:pick(plan.src==='fav'?[0,10,20]:[0,10])};
-  const gq=GENRE_Q[plan.genre]||plan.genre||'pop';
-  plan.artist=null;
-  return{q:`genre:"${gq}"`,offset:10*rand(0,15)};
-}
-
-/* ---------- aday havuzu ---------- */
+/* =====================================================================
+   ADAY HAVUZU — Deezer'dan
+   ===================================================================== */
 let pool=[],loading=false,misses=0;
 const inPool=id=>pool.some(x=>x.id===id);
+const seenKey=t=>norm(t.artists[0])+'|'+norm(t.name);
 function ingest(plan,tracks){
-  for(const t of tracks){
-    if(plan.artist)for(const x of t.artists)addEdge(plan.artist,x,1);
-    for(let i=0;i<t.artists.length;i++)for(let j=i+1;j<t.artists.length;j++)addEdge(t.artists[i],t.artists[j],2);
-    const A=t.artists[0];
-    if(plan.genre&&!M.aGenre[A])M.aGenre[A]=plan.genre;
-    if(plan.genre&&A!==plan.artist){const f=M.found[plan.genre]||(M.found[plan.genre]=[]);if(!f.includes(A)&&!(SEEDS[plan.genre]||[]).includes(A)){f.push(A);M.found[plan.genre]=f.slice(-80)}}
-  }
-  pruneGraph();
-  const fresh=tracks.filter(t=>!seen.has(t.id)&&!inPool(t.id)&&!likes.some(l=>l.id===t.id));
-  const per={},out=[];
-  for(const t of fresh.sort(()=>Math.random()-.5)){const A=t.artists[0];if((per[A]=(per[A]||0)+1)>3)continue;
-    t.src=plan.src;t.genre=M.aGenre[A]||plan.genre||null;t.via=plan.src==='graph'&&plan.artist?viaOf(plan.artist):null;out.push(t)}
-  pool.push(...out.slice(0,6));
+  for(const t of tracks){const A=t.artists[0];if(plan.genre&&!M.aGenre[A])M.aGenre[A]=plan.genre}
+  const likedKeys=new Set(likes.map(l=>norm((l.artists||[l.artist])[0])+'|'+norm(l.name)));
+  const fresh=tracks.filter(t=>!seen.has(t.id)&&!seen.has(seenKey(t))&&!inPool(t.id)&&!likedKeys.has(seenKey(t)));
+  const out=fresh.sort(()=>Math.random()-.5).slice(0,3);   // bir sanatçıdan tek seferde en fazla 3
+  for(const t of out){t.src=plan.src;t.genre=M.aGenre[t.artists[0]]||plan.genre||null;t.via=plan.src==='graph'&&plan.artist?viaOf(plan.artist):null}
+  pool.push(...out);
   return out.length;
 }
-function scheduleAfterCooldown(){
-  if(cooldownTimer)return;
-  const tick=()=>{
-    const left=Math.ceil((cooldownUntil-Date.now())/1000);
-    if(left<=0){cooldownTimer=null;sync('busy','Tekrar deneniyor…');refill();return}
-    sync('err',`Spotify istek sınırı · ${left} sn sonra otomatik tekrar denenecek`);
-    const el=document.getElementById('cdText');if(el)el.textContent=`${left} sn sonra otomatik tekrar denenecek.`;
-    cooldownTimer=setTimeout(tick,1000);
-  };
-  cooldownTimer=setTimeout(tick,0);
+function planArtist(plan){
+  if(plan.artist)return plan.artist;
+  const g=plan.genre||tsGenre();plan.genre=g;return leastShown(artistsFor(g));
 }
 async function refill(){
-  if(loading||!live)return;
-  if(Date.now()<cooldownUntil){scheduleAfterCooldown();if(!document.querySelector('#deck .card'))renderCooldown();return}
-  loading=true;
+  if(loading)return;loading=true;
   try{
     let guard=0;
-    while(pool.length<10&&guard++<3){
-      const plan=planQuery();const{q,offset}=webQuery(plan);
-      sync('busy',`Yeni şarkılar aranıyor (${guard}/3)…`);
-      log(`plan: ${plan.src} → ${q} @${offset}`);
-      let tracks=await searchTracks(q,offset);
-      if(!tracks.length&&offset>0)tracks=await searchTracks(q,0);
+    while(pool.length<10&&guard++<4){
+      const plan=planQuery();const a=planArtist(plan);plan.artist=a;
+      sync('busy',`Yeni şarkılar aranıyor (${guard}/4)…`);
+      log(`plan: ${plan.src} → ${a}`);
+      const tracks=await artistTracks(a);
       const got=ingest(plan,tracks);
       log(`  sonuç ${tracks.length}, yeni ${got}, havuz ${pool.length}`);
-      misses=got?0:misses+1;if(!got)upd('s',plan.src,0,.3);
+      misses=got?0:misses+1;if(!got)upd('s',plan.src,0,.2);
+      M.shownA[a]=(M.shownA[a]||0)+.3;                     // aynı sanatçıyı arka arkaya sorgulama
       if(!document.querySelector('#deck .card')&&pool.length)render();
-      if(misses>6)break;
+      expandArtist(a,plan.genre);                          // arka planda: benzer sanatçılar → ağ
+      if(misses>8)break;
     }
-    saveAll();sync('ok',readyText());
-  }catch(e){log('refill HATA: '+e.message);
-    if(e.status===429){loading=false;scheduleAfterCooldown();if(!document.querySelector('#deck .card'))renderCooldown();return}
-    if(e.code!=='auth'){sync('err',errText(e));if(e.status===403)showError('Spotify erişimi reddetti','Bu hesap uygulamaya ekli değil. Spotify Dashboard → SwipeTune → User Management\'tan e-postanı ekle.')}}
+    saveAll();sync(spOn?'ok':'',readyText());
+  }catch(e){log('refill HATA: '+e.message)}
   loading=false;
-  if(!document.querySelector('#deck .card')&&pool.length)render();
-  else if(!document.querySelector('#deck .card')&&misses>6)render();
-  else if(!document.querySelector('#deck .card')&&!pool.length&&live)setTimeout(refill,1500);   // sınırlı: misses>6 olunca durur
+  if(!document.querySelector('#deck .card')){
+    if(pool.length||misses>8)render();
+    else setTimeout(refill,1500);
+  }
 }
-function renderCooldown(){
-  deck.innerHTML=`<div class="center"><div style="font-size:40px">⏳</div><b>Spotify biraz nefes almak istiyor</b><span>Kısa sürede çok istek gitti. <span id="cdText"></span></span><pre id="dbg" class="dbg">${esc(LOG.slice(-7).join('\n'))}</pre></div>`;
-}
+function renderCooldown(){}   // Deezer modunda kullanılmıyor
 function showError(t,m){deck.innerHTML=`<div class="center"><div style="font-size:40px">⚠️</div><b>${esc(t)}</b><span>${esc(m)}</span><pre id="dbg" class="dbg">${esc(LOG.slice(-7).join('\n'))}</pre><button class="btn ghost" onclick="location.reload()">Tekrar dene</button></div>`}
 
 /* =====================================================================
-   ÖNİZLEME — Deezer'ın açık API'si (JSONP, anahtar gerekmez)
+   ÖNİZLEME — Deezer şarkısıyla birlikte geliyor
    ===================================================================== */
 const PREV={};
-const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/ı/g,'i').replace(/[^a-z0-9]/g,'');
-function deezerPreview(s){
-  if(s.id in PREV)return Promise.resolve(PREV[s.id]);
-  if(PREV['_p'+s.id])return PREV['_p'+s.id];
-  const pr=new Promise(res=>{
-    const cb='dz'+Math.random().toString(36).slice(2);const sc=document.createElement('script');
-    const done=v=>{clearTimeout(to);try{delete window[cb]}catch(e){window[cb]=undefined}sc.remove();PREV[s.id]=v;res(v)};
-    const to=setTimeout(()=>done(null),7000);
-    window[cb]=j=>{
-      const d=(j&&j.data)||[];const A=norm(s.artists[0]),T=norm(s.name).slice(0,12);
-      const hit=d.find(x=>x.preview&&norm(x.artist?.name)===A&&norm(x.title).startsWith(T))||d.find(x=>x.preview&&norm(x.artist?.name)===A)
-        ||d.find(x=>x.preview&&(norm(x.artist?.name).includes(A)||A.includes(norm(x.artist?.name)))&&norm(x.title).startsWith(T));
-      done(hit?hit.preview:null);
-    };
-    const title=s.name.replace(/\s*[\(\[].*?[\)\]]\s*/g,' ').replace(/\s+-\s+.*$/,'').trim();
-    sc.src='https://api.deezer.com/search?q='+encodeURIComponent(`artist:"${s.artists[0]}" track:"${title}"`)+'&limit=8&output=jsonp&callback='+cb;
-    sc.onerror=()=>done(null);document.head.appendChild(sc);
-  });
-  PREV['_p'+s.id]=pr;return pr;
-}
+function deezerPreview(s){if(!(s.id in PREV))PREV[s.id]=s.preview||null;return Promise.resolve(PREV[s.id])}
 const audio=new Audio();audio.preload='auto';
 let playingId=null;
 function setPlayUI(state,label){
@@ -740,13 +758,11 @@ function setPlayUI(state,label){
   b.title=label||'';b.classList.toggle('dim',state==='none');
   const h=document.querySelector('#deck .card:last-child .hint');if(h)h.textContent=label||'';
 }
-/* jest (kaydırma) içinde senkron çağrılabilsin diye önbellekteyse hemen çalar */
 function playNow(s){
   if(!s)return;
   if(S.sound===false){audio.pause();setPlayUI('pause','Ses kapalı');return}
-  const u=PREV[s.id];
-  if(u===undefined){audio.pause();playingId=null;deezerPreview(s).then(()=>{if(topId===s.id)playNow(s)});setPlayUI('pause','Önizleme yükleniyor…');return}
-  if(!u){audio.pause();playingId=null;setPlayUI('none','Önizleme bulunamadı');return}
+  const u=s.preview;
+  if(!u){audio.pause();playingId=null;setPlayUI('none','Önizleme yok');return}
   if(playingId!==s.id){audio.src=u;playingId=s.id}
   audio.currentTime=0;
   const p=audio.play();
@@ -761,7 +777,11 @@ function togglePlay(){
 }
 audio.addEventListener('timeupdate',()=>{const b=document.querySelector('#deck .card:last-child .prog i');if(b&&audio.duration)b.style.width=(audio.currentTime/audio.duration*100)+'%'});
 audio.addEventListener('ended',()=>setPlayUI('pause','Bitti — tekrar dinle ▶'));
-function prefetchPreviews(){for(const t of pool.map(t=>[t,estimate(t,false).p]).sort((a,b)=>b[1]-a[1]).slice(0,4).map(x=>x[0]))deezerPreview(t)}
+function prefetchPreviews(){
+  for(const t of pool.map(t=>[t,estimate(t,false).p]).sort((a,b)=>b[1]-a[1]).slice(0,3).map(x=>x[0])){
+    if(t.img){const i=new Image();i.src=t.img}
+  }
+}
 
 /* =====================================================================
    ARAYÜZ
@@ -795,7 +815,6 @@ function render(){
     deck.innerHTML=misses>6
       ?`<div class="center"><div style="font-size:40px">🎧</div><b>Bu filtrede yeni şarkı bulunamadı</b><span>Başka bir tür seç.</span></div>`
       :`<div class="center"><div class="spinner"></div><span>Şarkılar geliyor…</span><pre id="dbg" class="dbg">${esc(LOG.slice(-7).join('\n'))}</pre></div>`;
-    if(Date.now()<cooldownUntil){renderCooldown();scheduleAfterCooldown();return}
     if(!loading&&misses<=6)refill();
     return;
   }
@@ -812,7 +831,7 @@ function render(){
   else if(playingId===pair[0].id&&!audio.paused)setPlayUI('play','');
   if(pair[1])deezerPreview(pair[1]);
   prefetchPreviews();
-  if(pool.length<5&&Date.now()>=cooldownUntil)refill();
+  if(pool.length<5)refill();
 }
 function attachDrag(el){
   let sx=0,sy=0,dx=0,dy=0,drag=false;
@@ -848,9 +867,10 @@ function decide(type){
   pool=pool.filter(x=>x.id!==s.id);
   learn(s,type,dwell,clicked);
   prunePool();
-  seen.add(s.id);
+  seen.add(s.id);seen.add(seenKey(s));
+  if(type!=='nope')expandArtist(s.artists[0],s.genre);
   let item=null;
-  if(type!=='nope'){item={id:s.id,uri:s.uri,name:s.name,artist:s.artists.join(', '),artists:s.artists,url:s.url,img:s.thumb||s.img,super:type==='super',status:'pending'};likes.unshift(item);updateCount()}
+  if(type!=='nope'){item={id:s.id,uri:s.uri||null,name:s.name,artist:s.artists.join(', '),artists:s.artists,url:s.url,img:s.thumb||s.img,super:type==='super',status:'pending'};likes.unshift(item);updateCount()}
   saveAll();
   if(item)pushLike(item);
   // sıradaki kartı hemen seç ve sesini bu dokunuşun içinde başlat (mobil tarayıcılar jest ister)
@@ -880,11 +900,12 @@ function openList(){
   $('drawerTitle').textContent=`Beğendiklerin (${likes.length})`;$('drawerTitle').dataset.v='list';
   $('list').innerHTML=likes.length?likes.map(x=>{
     const s={name:x.name,artists:x.artists||[x.artist],img:x.img};
-    const st=x.status==='ok'?'<span title="Spotify\'da">✅</span>':x.status==='err'?`<button class="icon-btn" data-retry="${esc(x.id)}">Tekrar</button>`:x.status==='pending'?'⏳':'';
+    const st=x.status==='ok'?'<span title="Spotify\'da">✅</span>':x.status==='err'?`<button class="icon-btn" data-retry="${esc(x.id)}">Tekrar</button>`:x.status==='pending'?'⏳':x.status==='queued'?'<span title="Spotify sınırı bitince eklenecek">🕒</span>':x.status==='notfound'?'<span title="Spotify\'da bulunamadı">❓</span>':'';
     return `<div class="row">${s.img?`<img class="thumbimg" src="${esc(s.img)}" alt="">`:`<div class="thumb">${art(s)}</div>`}<div class="t"><b>${x.super?'★ ':''}${esc(x.name)}</b><small>${esc(x.artist)}</small></div>${st}<a href="${esc(x.url||spSearch(s))}" target="_blank" rel="noopener" title="Spotify">▶</a></div>`}).join('')
     :`<p style="color:var(--muted);padding:20px;text-align:center">Henüz beğendiğin yok. Sağa kaydır 👉</p>`;
   $('list').querySelectorAll('[data-retry]').forEach(b=>b.onclick=()=>{const it=likes.find(x=>x.id===b.dataset.retry);if(it)pushLike(it)});
-  $('drawerFoot').innerHTML=`${pl?`<a class="btn spotify" href="${esc(pl.url)}" target="_blank" rel="noopener">Spotify'da ${esc(PL_NAME)} playlistini aç</a>`:''}<a class="btn ${pl?'ghost':'spotify'}" href="${LIKED_URL}" target="_blank" rel="noopener">Beğenilen Şarkılar'ı aç</a><button class="btn ghost" id="copyBtn">Listeyi kopyala</button>`;
+  $('drawerFoot').innerHTML=!spOn?`<button class="btn spotify" id="lgBtn">Spotify'a bağlan — beğeniler playliste gitsin</button><button class="btn ghost" id="copyBtn">Listeyi kopyala</button>`:`${pl?`<a class="btn spotify" href="${esc(pl.url)}" target="_blank" rel="noopener">Spotify'da ${esc(PL_NAME)} playlistini aç</a>`:''}<a class="btn ${pl?'ghost':'spotify'}" href="${LIKED_URL}" target="_blank" rel="noopener">Beğenilen Şarkılar'ı aç</a><button class="btn ghost" id="copyBtn">Listeyi kopyala</button>`;
+  if($('lgBtn'))$('lgBtn').onclick=login;
   $('copyBtn').onclick=async()=>{const t=likes.map(x=>`${x.name} — ${x.artist}`).join('\n');if(!t){toast('Liste boş');return}try{await navigator.clipboard.writeText(t);toast('📋 Kopyalandı')}catch(e){toast('Kopyalanamadı')}};
   openDrawer();
 }
@@ -918,29 +939,29 @@ function openBrain(){
 function openMenu(){
   $('drawerTitle').textContent='Ayarlar';$('drawerTitle').dataset.v='menu';
   $('list').innerHTML=`<div style="padding:10px 6px;display:flex;flex-direction:column;gap:12px">
-    <div style="color:var(--muted)">Giriş: <b style="color:var(--text)">${esc(me?.display_name||me?.id||'—')}</b></div>
+    <div style="color:var(--muted)">Giriş: <b style="color:var(--text)">${spOn?esc(me?.display_name||me?.id||'Spotify'):'Girişsiz mod'}</b></div>
     <div style="color:var(--muted)">Beğeniler nereye gitsin?</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="chip ${S.dest!=='library'?'on':''}" id="dPl">${esc(PL_NAME)} playlisti</button><button class="chip ${S.dest==='library'?'on':''}" id="dLib">Beğenilen Şarkılar</button></div>
     <button class="btn ghost" id="mTaste">Algoritmayı sıfırla (zevk profili)</button>
     <button class="btn ghost" id="mSeen">Görülen şarkıları sıfırla (${seen.size})</button>
     <button class="btn ghost" id="mLikes">Beğeni listesini temizle</button>
     <button class="btn ghost" id="mDbg">🔧 Tanı bilgisini kopyala</button>
-    <button class="btn ghost" id="mOut" style="color:var(--nope)">Çıkış yap</button>
-    <p style="color:var(--muted);font-size:12px">Önizlemeler Deezer'dan gelir; bazı şarkılarda bulunmayabilir. Listeyi temizlemek Spotify'daki şarkılarına dokunmaz.</p></div>`;
+    ${spOn?'<button class="btn ghost" id="mOut" style="color:var(--nope)">Çıkış yap</button>':'<button class="btn spotify" id="mIn">Spotify ile giriş yap</button>'}
+    <p style="color:var(--muted);font-size:12px">Şarkılar, kapaklar ve önizlemeler Deezer'dan gelir; Spotify sadece beğendiğinde kullanılır. Listeyi temizlemek Spotify'daki şarkılarına dokunmaz.</p></div>`;
   $('drawerFoot').innerHTML='';
   $('dPl').onclick=()=>{S.dest='playlist';saveAll();sync('ok',readyText());openMenu()};
   $('dLib').onclick=()=>{S.dest='library';saveAll();sync('ok',readyText());openMenu()};
   $('mTaste').onclick=function(){if(this.dataset.armed){M=newModel();pprStep=-1;S.onboarded=false;saveAll();closeList();buildOnb();$('onb').classList.remove('hide')}else{this.dataset.armed=1;this.textContent='Emin misin? Tekrar dokun'}};
   $('mSeen').onclick=()=>{seen=new Set();saveAll();misses=0;toast('Sıfırlandı');openMenu();if(!shown.length)render()};
   $('mLikes').onclick=function(){if(this.dataset.armed){likes=[];saveAll();updateCount();closeList();toast('Liste temizlendi')}else{this.dataset.armed=1;this.textContent='Emin misin? Tekrar dokun'}};
-  $('mOut').onclick=logout;
+  if($('mOut'))$('mOut').onclick=logout;if($('mIn'))$('mIn').onclick=login;
   $('mDbg').onclick=async()=>{const t=['SwipeTune tanı','UA: '+navigator.userAgent,'live='+live+' pool='+pool.length+' misses='+misses+' step='+M.step,...LOG].join('\n');try{await navigator.clipboard.writeText(t);toast('📋 Tanı bilgisi kopyalandı')}catch(e){toast('Kopyalanamadı')}};
   openDrawer();
 }
 function showMatch(s){
   $('matchDisc').innerHTML=s.img?`<img src="${esc(s.img)}" style="width:100%;height:100%;object-fit:cover" alt="">`:art(s);
   $('matchTitle').textContent=s.name;$('matchArtist').textContent=s.artists.join(', ');
-  $('matchText').textContent=`Spotify'da ${destName()} eklendi. Algoritma bunu güçlü sinyal olarak aldı.`;
+  $('matchText').textContent=spOn?`Spotify'da ${destName()} ekleniyor. Algoritma bunu güçlü sinyal olarak aldı.`:'Listene eklendi. Algoritma bunu güçlü sinyal olarak aldı.';
   $('match').classList.add('open');
 }
 function showLogin(){$('login').classList.remove('hide')}
@@ -959,6 +980,7 @@ function buildOnb(){
 $('likeBtn').onclick=()=>decide('like');$('nopeBtn').onclick=()=>decide('nope');$('superBtn').onclick=()=>decide('super');
 $('undoBtn').onclick=undo;$('openList').onclick=openList;$('closeList').onclick=closeList;$('drawerBg').onclick=closeList;
 $('menuBtn').onclick=openMenu;$('brainBtn').onclick=openBrain;$('loginBtn').onclick=login;
+$('guestBtn').onclick=()=>{S.guest=true;saveAll();location.reload()};
 $('soundBtn').onclick=()=>{S.sound=S.sound===false;saveAll();updateSoundBtn();if(S.sound===false)audio.pause();else if(shown[0])playNow(shown[0])};
 $('matchClose').onclick=()=>$('match').classList.remove('open');
 document.addEventListener('keydown',e=>{
@@ -970,22 +992,23 @@ document.addEventListener('keydown',e=>{
 });
 (async()=>{
   updateCount();updateSoundBtn();buildOnb();renderFilters();
-  deck.innerHTML=`<div class="center"><div class="spinner"></div><span>Spotify'a bağlanılıyor…</span></div>`;
+  log('başlıyor');
   try{await handleRedirect()}catch(e){toast('Giriş hatası: '+e.message)}
-  log('başlıyor, token: '+(ls.get('tok',null)?'var':'yok'));
-  if(!await token()){showLogin();deck.innerHTML='';return}
-  try{me=await sp('/me');ls.set('me',me);live=true}
-  catch(e){if(e.status===403){showError('Bu hesap uygulamaya ekli değil','Spotify Dashboard → SwipeTune → User Management\'tan bu hesabın e-postasını ekle.');return}}
-  // soğuk başlangıç: en çok dinlediğin sanatçılar
-  try{
-    const j=await sp('/me/top/artists?limit=30&time_range=medium_term');
-    TOP=(j?.items||[]).map(a=>a.name).filter(Boolean);
+  const tk=await token();
+  if(!tk&&!S.guest){showLogin();deck.innerHTML='';return}
+  if(tk){
+    spOn=true;
+    if(!me){try{me=await sp('/me');ls.set('me',me)}catch(e){if(e.status===403){toast('Bu Spotify hesabı uygulamaya ekli değil — girişsiz devam');spOn=false}}}
+    // soğuk başlangıç: en çok dinlediğin sanatçılar (günde bir kez sorulur)
+    const cached=scGet('top',864e5);
+    if(cached!==undefined)TOP=cached;
+    else if(spOn){try{const j=await sp('/me/top/artists?limit=30&time_range=medium_term');TOP=(j?.items||[]).map(a=>a.name).filter(Boolean);scSet('top',TOP)}catch(e){}}
     if(TOP.length&&!M.topSeeded){TOP.slice(0,12).forEach((a,i)=>upd('a',a,1,1.2-i*.06));M.topSeeded=true;saveAll()}
-  }catch(e){}
-  sync('ok',readyText());
+  }
+  sync(spOn?'ok':'',readyText());
   if(!S.onboarded){$('onb').classList.remove('hide');deck.innerHTML='';return}
   render();
-  likes.filter(x=>x.status==='pending'||x.status==='err').slice(0,5).forEach(pushLike);
+  if(spOn)likes.filter(x=>['pending','err','queued'].includes(x.status)).slice(0,8).reverse().forEach(pushLike);
 })();
 
 </script>

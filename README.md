@@ -9,7 +9,8 @@
 ---
 
 ## Özellikler
-- 🎵 **Otomatik önizleme:** Her kartta 30 saniyelik önizleme çalar (Deezer açık API'si, JSONP). Karta dokununca durur ya da devam eder.
+- 🎵 **Otomatik önizleme:** Her kartta 30 saniyelik önizleme çalar. Karta dokununca durur ya da devam eder.
+- 👀 **Girişsiz mod:** Spotify hesabı olmadan da denenebilir, beğeniler cihazda saklanır.
 - ❤️ **Shazam gibi playlist:** İlk beğenide `SwipeTune ❤️` playlisti oluşturulur, sonraki beğeniler oraya eklenir. Geri alırsan şarkı playlistten de çıkar.
 - 🧠 **Kendi yazdığım öneri motoru:** "Algoritma beynin" paneli, sistemin seni nasıl modellediğini canlı gösterir.
 - 🖼️ Gerçek albüm kapakları, uyum yüzdesi ve her öneri için "neden bu şarkı" açıklaması.
@@ -38,10 +39,16 @@ Sentetik bir kullanıcıyla (aslında Türkçe Rock ve Indie seviyor, onboarding
 | Beğeni oranı | ~%25 | **%58–78** |
 | Rastgele öneri | ~%18 | ~%18 |
 
+## Mimari
+- **Keşif, kapaklar, önizlemeler → Deezer açık API'si** (JSONP, anahtar gerektirmez): sanatçı top şarkıları ve *benzer sanatçılar*. Benzer sanatçı verisi algoritmadaki sanatçı ağını besler.
+- **Spotify → sadece giriş ve yazma.** Kullanıcının en çok dinlediği sanatçılar günde bir kez alınır. Bir şarkı beğenilince Spotify'da karşılığı bulunur ve playliste eklenir.
+- **Neden?** Spotify geliştirme modunun istek kotası düşük. Keşfi Deezer'a taşımak Spotify isteklerini yaklaşık %95 azalttı. Spotify `429` dönerse üstel bekleme uygulanır ve beğeniler kuyruğa alınıp kota açılınca gönderilir.
+- Bütün API cevapları `localStorage`'da 24 saat önbelleğe alınır.
+
 ## Teknik
 - Tek dosya: `index.html` (HTML + CSS + vanilla JS). Framework ve build adımı yok.
-- Spotify Web API: PKCE OAuth, `/search`, `/me/top/artists`, `/me/playlists`, `/playlists/{id}/items`, `/me/library`
-- Deezer API: önizleme URL'leri (JSONP, anahtar gerektirmez)
+- Spotify Web API: PKCE OAuth, `/me/top/artists`, `/search` (sadece beğenide eşleştirme), `/me/playlists`, `/playlists/{id}/items`, `/me/library`
+- Deezer API (JSONP): `/search/artist`, `/artist/{id}/top`, `/artist/{id}/related`
 - Durum `localStorage`'da tutulur: model, görülenler, beğeniler.
 
 ## Kurulum (kendi kopyan için)
